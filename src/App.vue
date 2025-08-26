@@ -47,7 +47,7 @@ watch(
 
   <!-- top region -->
   <header class="bg-light py-5 border-bottom">
-    <div class="container">
+    <div class="container-xxl">
       <!-- [thematic]  -->
       <h1 class="display-6 fw-bold">Better Living, Beyond Sub-Health</h1>
 
@@ -57,7 +57,7 @@ watch(
   </header>
 
   <!-- Main area: responsive layout -->
-  <main class="container py-5">
+  <main class="container-xxl py-5">
     <div class="row g-4">
       <!-- left Section -->
       <section id="section-a" class="col-12 col-md-6">
@@ -66,8 +66,8 @@ watch(
             <h2 class="h4 mb-3">Health tips</h2>
 
             <!-- Add a Tip -->
-            <div class="row g-2 align-items-end mb-3">
-              <div class="col-12 col-md-5">
+            <div class="row g-2 align-items-end mb-3 flex-xl-nowrap">
+              <div class="col-12 col-xl-5">
                 <label class="form-label small">Title</label>
                 <input
                   class="form-control"
@@ -79,8 +79,8 @@ watch(
                 <label class="form-label small">Details (optional)</label>
                 <input class="form-control" v-model.trim="newPref.note" placeholder="Short note" />
               </div>
-              <div class="col-12 col-md-2">
-                <button class="btn btn-primary w-100" @click="addPref">Add</button>
+              <div class="col-12 col-xl-auto d-grid">
+                <button class="btn btn-primary text-nowrap" @click="addPref">Add</button>
               </div>
             </div>
 
@@ -118,9 +118,9 @@ watch(
 
   <!-- bottoms -->
   <footer class="py-4 border-top">
-    <div class="container small text-muted">
+    <div class="container-xxl small text-muted">
       <!-- [Copyright Information] -->
-      © 2025 NFP Health — Demo for Assignment A1.2
+      © 2025 NFP Health — Demo for Assignment A1.2 - 34657762
     </div>
   </footer>
 </template>
