@@ -1,6 +1,6 @@
 <template>
   <nav class="navbar navbar-expand-lg bg-body-tertiary shadow-sm">
-    <div class="container">
+    <div class="container-xxl">
       <!-- Brand name -->
       <a class="navbar-brand fw-bold" href="#">NFP Health</a>
 
