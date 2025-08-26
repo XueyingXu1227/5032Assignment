@@ -1,5 +1,6 @@
 <script setup>
 import Navbar from './components/Navbar.vue'
+import Join from './components/Join.vue'
 </script>
 
 <template>
@@ -34,7 +35,7 @@ import Navbar from './components/Navbar.vue'
         <div class="card h-100">
           <div class="card-body">
             <h2 class="h4 mb-3">Join</h2>
-            <p class="mb-0 text-muted">Join us and take the first step toward better health.</p>
+            <Join />
           </div>
         </div>
       </section>
