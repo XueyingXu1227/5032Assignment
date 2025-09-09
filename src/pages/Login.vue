@@ -57,35 +57,53 @@ const router = useRouter()
 
 // login function
 const handleLogin = () => {
-  usernameError.value = ''
-  passwordError.value = ''
+  validateUsername()
+  validatePassword()
+
+  if (usernameError.value || passwordError.value) return
 
   // Read registration information from localStorage
-  const savedUsername = localStorage.getItem('username')
-  const savedPassword = localStorage.getItem('password')
+  const storedAdmin = JSON.parse(localStorage.getItem('admin') || 'null')
+  const storedUser = JSON.parse(localStorage.getItem(username.value) || 'null')
 
-  // Check for matches
-  if (username.value !== savedUsername) {
-    usernameError.value = 'Username does not exist'
-  }
-  if (password.value !== savedPassword) {
-    passwordError.value = 'Incorrect password'
+  let validLogin = false
+  let currentUser = null
+
+  // Judgement is an administrator
+  if (
+    storedAdmin &&
+    storedAdmin.username === username.value &&
+    storedAdmin.password === password.value
+  ) {
+    validLogin = true
+    currentUser = storedAdmin
   }
 
-  // Successful login
-  if (!usernameError.value && !passwordError.value) {
-    // Store the logged-in user information in localStorage for subsequent display.
-    const userInfo = {
-      username: username.value,
-    }
-    localStorage.setItem('user', JSON.stringify(userInfo))
-
-    //Jump back to home page and refresh
-    //router.push('/')
-    router.replace('/')
-    setTimeout(() => {
-      location.reload()
-    }, 100)
+  // Determine that it is a regular user
+  else if (storedUser && storedUser.password === password.value) {
+    validLogin = true
+    currentUser = { username: storedUser.username, role: 'user' }
   }
+
+  // Login Successful
+  if (validLogin) {
+    localStorage.setItem('currentUser', JSON.stringify(currentUser))
+    router.push('/')
+  } else {
+    alert('Invalid username or password')
+  }
+}
+
+// Make sure the administrator account is written to localStorage
+const existingAdmin = localStorage.getItem('admin')
+if (!existingAdmin) {
+  localStorage.setItem(
+    'admin',
+    JSON.stringify({
+      username: 'admin',
+      password: 'admin123',
+      role: 'admin',
+    }),
+  )
 }
 </script>
