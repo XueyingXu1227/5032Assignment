@@ -2,14 +2,15 @@
 import { ref, onMounted } from 'vue'
 
 const username = ref('')
+const isAdmin = ref(false)
 
 onMounted(() => {
-  // Trying to get username from localStorage on page load
   const storedUser = localStorage.getItem('user')
   if (storedUser) {
     try {
       const parsedUser = JSON.parse(storedUser)
       username.value = parsedUser.username
+      isAdmin.value = parsedUser.role === 'admin'
     } catch (e) {
       console.error('Failed to parse user:', e)
     }
@@ -30,9 +31,12 @@ const logout = () => {
     <router-link to="/quiz">Self-check Quiz</router-link>
     <router-link to="/tracker">Habit Tracker</router-link>
     <router-link to="/community">Community</router-link>
+    <router-link v-if="isAdmin" to="/user-management">User Management</router-link>
+    <router-link v-if="isAdmin" to="/content-management">Content Management</router-link>
+
     <router-link to="/about">About</router-link>
     <span v-if="username">
-      👋 Welcome, {{ username }} |
+      Welcome, {{ username }} |
       <a href="#" @click.prevent="logout">Logout</a>
     </span>
     <router-link v-else to="/login">Login</router-link>
@@ -47,7 +51,7 @@ nav {
   background-color: #f8f8f8;
 }
 
-router-link {
+a {
   text-decoration: none;
   color: #333;
 }
