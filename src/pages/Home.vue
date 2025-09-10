@@ -8,7 +8,7 @@ import FeatureCard from '../components/FeatureCard.vue'
     <div class="container text-center my-5">
       <h2>Rediscovering sub-health</h2>
       <p>Welcome to the Healthy Living Recommendation Platform</p>
-      <button class="btn btn-outline-dark">Start self-testing</button>
+      <router-link to="/quiz" class="btn btn-outline-dark">Start self-testing</router-link>
     </div>
 
     <!-- Three Functional Introduction Areas -->
@@ -18,21 +18,21 @@ import FeatureCard from '../components/FeatureCard.vue'
           <FeatureCard
             title="Health Self-Test"
             description="A quick look at your health"
-            link="/Programs"
+            link="/Quiz"
           />
         </div>
         <div class="col-md-4">
           <FeatureCard
             title="Dietary Recommendations"
             description="Recommended nutritional recipes for you"
-            link="/Rate"
+            link="/Programs"
           />
         </div>
         <div class="col-md-4">
           <FeatureCard
             title="Habit tracking"
             description="Record Your Healthy Habits"
-            link="/Programs"
+            link="/Tracker"
           />
         </div>
       </div>
@@ -40,7 +40,7 @@ import FeatureCard from '../components/FeatureCard.vue'
 
     <!-- CTA Registration Guidance Area -->
     <div class="text-center mb-4">
-      <p>Start your health journey！</p>
+      <p>Start your health journey!</p>
       <router-link to="/signup">[Sign up]</router-link>
       <router-link to="/login">[Log in]</router-link>
     </div>

@@ -91,9 +91,42 @@ const handleSubmit = () => {
   validateConfirmPassword()
 
   if (!usernameError.value && !passwordError.value && !confirmPasswordError.value) {
-    localStorage.setItem('username', username.value)
-    localStorage.setItem('password', password.value)
+    // Preventing script injection
+    const safeUsername = username.value.replace(/[<>"']/g, '')
+
+    const userObject = {
+      username: safeUsername,
+      password: password.value,
+      // The default role is normal user
+      role: 'user',
+    }
+
+    // The user name is used as the key to store the user object
+    localStorage.setItem(safeUsername, JSON.stringify(userObject))
+
     alert('Registration successful!')
+  }
+}
+
+function validateUsername() {
+  const regex = /^[a-zA-Z0-9]{6,20}$/
+  if (!username.value.trim()) {
+    usernameError.value = 'Username is required'
+  } else if (!regex.test(username.value)) {
+    usernameError.value = 'Username must be 6–20 letters or numbers only'
+  } else {
+    usernameError.value = ''
+  }
+}
+
+function validatePassword() {
+  const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
+  if (!password.value) {
+    passwordError.value = 'Password is required'
+  } else if (!regex.test(password.value)) {
+    passwordError.value = 'Password must be at least 6 characters with letters and numbers'
+  } else {
+    passwordError.value = ''
   }
 }
 </script>

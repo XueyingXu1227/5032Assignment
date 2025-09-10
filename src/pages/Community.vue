@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <h2>Programs Page</h2>
-    <p>This is the Community page.</p>
+  <div class="container mt-5">
+    <h2>This is the Community page.</h2>
   </div>
 </template>
