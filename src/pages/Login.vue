@@ -68,44 +68,42 @@ if (!existingAdmin) {
   )
 }
 
-// login function
 const handleLogin = () => {
   usernameError.value = ''
   passwordError.value = ''
 
-  if (usernameError.value || passwordError.value) return
+  if (!username.value.trim()) {
+    usernameError.value = 'Username is required'
+    return
+  }
 
-  // Read registration information from localStorage
-  const savedUsername = localStorage.getItem('username')
-  const savedPassword = localStorage.getItem('password')
+  if (!password.value) {
+    passwordError.value = 'Password is required'
+    return
+  }
 
-  // Get administrator account
+  // Retrieve the localStorage data corresponding to the currently entered username.
+  const storedUser = JSON.parse(localStorage.getItem(username.value) || 'null')
+
+  // Check if it is an administrator account
   const adminAccount = JSON.parse(localStorage.getItem('admin'))
 
-  let isValid = false
   let currentUser = null
 
-  // If an administrator
   if (username.value === adminAccount.username && password.value === adminAccount.password) {
-    isValid = true
     currentUser = { username: adminAccount.username, role: 'admin' }
+  } else if (storedUser && storedUser.password === password.value) {
+    currentUser = { username: storedUser.username, role: storedUser.role || 'user' }
   }
 
-  // If a regular user
-  else if (username.value === savedUsername && password.value === savedPassword) {
-    isValid = true
-    currentUser = { username: savedUsername, role: 'user' }
-  }
-
-  // Successful login
-  if (isValid) {
+  if (currentUser) {
     localStorage.setItem('user', JSON.stringify(currentUser))
     router.replace('/')
     setTimeout(() => {
       location.reload()
     }, 100)
   } else {
-    if (username.value !== adminAccount.username && username.value !== savedUsername) {
+    if (!storedUser && username.value !== adminAccount.username) {
       usernameError.value = 'Username does not exist'
     } else {
       passwordError.value = 'Incorrect password'

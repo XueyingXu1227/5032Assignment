@@ -21,7 +21,8 @@
       <!-- Password input box -->
       <div class="mb-3">
         <label for="password" class="form-label"
-          >Password <small class="text-muted">(min. 6 characters)</small></label
+          >Password
+          <small class="text-muted">(min. 2 characters with letters and numbers)</small></label
         >
         <input
           type="password"
@@ -59,13 +60,26 @@ import { ref } from 'vue'
 
 // Individual authentication of user names
 const validateUsername = () => {
-  usernameError.value = username.value.trim() ? '' : 'Username is required'
+  const regex = /^[a-zA-Z0-9_]{2,20}$/
+  if (!username.value.trim()) {
+    usernameError.value = 'Username is required'
+  } else if (!regex.test(username.value)) {
+    usernameError.value = 'Username must be 2–20 characters (letters, numbers, underscores)'
+  } else {
+    usernameError.value = ''
+  }
 }
 
 // Verify passwords individually
 const validatePassword = () => {
-  const pwd = password.value.trim()
-  passwordError.value = password.value.length >= 6 ? '' : 'Password must be at least 6 characters'
+  const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
+  if (!password.value) {
+    passwordError.value = 'Password is required'
+  } else if (!regex.test(password.value)) {
+    passwordError.value = 'Password must be at least 6 characters with letters and numbers'
+  } else {
+    passwordError.value = ''
+  }
 }
 
 // Individual verification of confirmation password
@@ -91,42 +105,17 @@ const handleSubmit = () => {
   validateConfirmPassword()
 
   if (!usernameError.value && !passwordError.value && !confirmPasswordError.value) {
-    // Preventing script injection
-    const safeUsername = username.value.replace(/[<>"']/g, '')
+    // Preventing XSS Injection: Clearing Special Symbols
+    const safeUsername = username.value.replace(/[^a-zA-Z0-9_]/g, '')
 
     const userObject = {
       username: safeUsername,
       password: password.value,
-      // The default role is normal user
       role: 'user',
     }
 
-    // The user name is used as the key to store the user object
     localStorage.setItem(safeUsername, JSON.stringify(userObject))
-
     alert('Registration successful!')
-  }
-}
-
-function validateUsername() {
-  const regex = /^[a-zA-Z0-9]{6,20}$/
-  if (!username.value.trim()) {
-    usernameError.value = 'Username is required'
-  } else if (!regex.test(username.value)) {
-    usernameError.value = 'Username must be 6–20 letters or numbers only'
-  } else {
-    usernameError.value = ''
-  }
-}
-
-function validatePassword() {
-  const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
-  if (!password.value) {
-    passwordError.value = 'Password is required'
-  } else if (!regex.test(password.value)) {
-    passwordError.value = 'Password must be at least 6 characters with letters and numbers'
-  } else {
-    passwordError.value = ''
   }
 }
 </script>
