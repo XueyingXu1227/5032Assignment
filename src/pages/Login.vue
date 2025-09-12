@@ -44,6 +44,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { normalizeUsername, sha256 } from '@/utils/security'
+import { onMounted } from 'vue'
 
 // input field
 const username = ref('')
@@ -55,20 +57,18 @@ const passwordError = ref('')
 
 const router = useRouter()
 
-// Write down the administrator account
-const existingAdmin = localStorage.getItem('admin')
-if (!existingAdmin) {
-  localStorage.setItem(
-    'admin',
-    JSON.stringify({
-      username: 'admin',
-      password: 'admin123',
-      role: 'admin',
-    }),
-  )
-}
+// Initialise administrator account (hash storage)
+onMounted(async () => {
+  if (!localStorage.getItem('admin')) {
+    const adminHash = await sha256('admin123')
+    localStorage.setItem(
+      'admin',
+      JSON.stringify({ username: 'admin', passwordHash: adminHash, role: 'admin' }),
+    )
+  }
+})
 
-const handleLogin = () => {
+const handleLogin = async () => {
   usernameError.value = ''
   passwordError.value = ''
 
@@ -82,28 +82,32 @@ const handleLogin = () => {
     return
   }
 
+  const safeUsername = normalizeUsername(username.value)
   // Retrieve the localStorage data corresponding to the currently entered username.
-  const storedUser = JSON.parse(localStorage.getItem(username.value) || 'null')
+  const storedUser = JSON.parse(localStorage.getItem(`user:${safeUsername}`) || 'null')
 
   // Check if it is an administrator account
-  const adminAccount = JSON.parse(localStorage.getItem('admin'))
+  const adminAccount = JSON.parse(localStorage.getItem('admin') || 'null')
+  const inputHash = await sha256(password.value)
 
   let currentUser = null
 
-  if (username.value === adminAccount.username && password.value === adminAccount.password) {
+  if (
+    adminAccount &&
+    safeUsername === adminAccount.username &&
+    inputHash === adminAccount.passwordHash
+  ) {
     currentUser = { username: adminAccount.username, role: 'admin' }
-  } else if (storedUser && storedUser.password === password.value) {
+  } else if (storedUser && inputHash === storedUser.passwordHash) {
     currentUser = { username: storedUser.username, role: storedUser.role || 'user' }
   }
 
   if (currentUser) {
     localStorage.setItem('user', JSON.stringify(currentUser))
     router.replace('/')
-    setTimeout(() => {
-      location.reload()
-    }, 100)
+    setTimeout(() => location.reload(), 100)
   } else {
-    if (!storedUser && username.value !== adminAccount.username) {
+    if (!storedUser && (!adminAccount || safeUsername !== 'admin')) {
       usernameError.value = 'Username does not exist'
     } else {
       passwordError.value = 'Incorrect password'

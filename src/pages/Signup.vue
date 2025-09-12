@@ -5,7 +5,10 @@
     <form @submit.prevent="handleSubmit" novalidate>
       <!-- User name input box -->
       <div class="mb-3">
-        <label for="username" class="form-label">Username</label>
+        <label for="username" class="form-label"
+          >Username
+          <small class="text-muted">(min. 2 characters (letters, numbers, underscores))</small>
+        </label>
         <input
           type="text"
           class="form-control"
@@ -22,7 +25,7 @@
       <div class="mb-3">
         <label for="password" class="form-label"
           >Password
-          <small class="text-muted">(min. 2 characters with letters and numbers)</small></label
+          <small class="text-muted">(min. 6 characters with letters and numbers )</small></label
         >
         <input
           type="password"
@@ -57,6 +60,20 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { normalizeUsername, sha256 } from '@/utils/security'
+
+// User input fields
+const username = ref('')
+const password = ref('')
+const confirmPassword = ref('')
+
+// Error message
+const usernameError = ref('')
+const passwordError = ref('')
+const confirmPasswordError = ref('')
+
+const router = useRouter()
 
 // Individual authentication of user names
 const validateUsername = () => {
@@ -88,34 +105,34 @@ const validateConfirmPassword = () => {
     confirmPassword.value === password.value ? '' : 'Passwords do not match'
 }
 
-// User input fields
-const username = ref('')
-const password = ref('')
-const confirmPassword = ref('')
-
-// Error message
-const usernameError = ref('')
-const passwordError = ref('')
-const confirmPasswordError = ref('')
-
 // Submit Handler Functions
-const handleSubmit = () => {
+const handleSubmit = async () => {
   validateUsername()
   validatePassword()
   validateConfirmPassword()
 
   if (!usernameError.value && !passwordError.value && !confirmPasswordError.value) {
-    // Preventing XSS Injection: Clearing Special Symbols
-    const safeUsername = username.value.replace(/[^a-zA-Z0-9_]/g, '')
+    // Unified Purification Username
+    const safeUsername = normalizeUsername(username.value)
 
+    // Rename checking
+    if (localStorage.getItem(`user:${safeUsername}`)) {
+      usernameError.value = 'Username already exists'
+      return
+    }
+
+    const passwordHash = await sha256(password.value)
+
+    // Save User Objects
     const userObject = {
       username: safeUsername,
-      password: password.value,
+      passwordHash,
       role: 'user',
     }
 
-    localStorage.setItem(safeUsername, JSON.stringify(userObject))
+    localStorage.setItem(`user:${safeUsername}`, JSON.stringify(userObject))
     alert('Registration successful!')
+    router.push('/')
   }
 }
 </script>
