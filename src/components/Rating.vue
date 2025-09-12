@@ -39,10 +39,19 @@ function selectRating(star) {
 }
 
 function submitRating() {
+  // Check if you are logged in
+  const currentUser = JSON.parse(localStorage.getItem('user') || 'null')
+  if (!currentUser) {
+    alert('Please log in to rate.')
+    window.location.href = '/login'
+    return
+  }
+  // Save Ratings
   const key = `ratings_${props.recipeId}`
   const existing = JSON.parse(localStorage.getItem(key) || '[]')
   existing.push(selectedRating.value)
   localStorage.setItem(key, JSON.stringify(existing))
+  // Updating of average scores
   loadRatings()
   selectedRating.value = 0
 }

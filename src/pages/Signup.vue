@@ -132,7 +132,7 @@ const handleSubmit = async () => {
 
     localStorage.setItem(`user:${safeUsername}`, JSON.stringify(userObject))
     alert('Registration successful!')
-    router.push('/')
+    router.push('/login')
   }
 }
 </script>
