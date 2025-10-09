@@ -20,53 +20,51 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import auth from '@/services/auth'
+import store from '@/services/storage'
 
 const props = defineProps({
   // Unique ID for each recipe
-  recipeId: String,
+  recipeId: { type: String, required: true },
 })
 
 const selectedRating = ref(0)
+const myRating = ref(null)
 const averageRating = ref(null)
 const totalRatings = ref(0)
 
-onMounted(() => {
-  loadRatings()
+onMounted(async () => {
+  await loadRatings()
 })
 
 function selectRating(star) {
   selectedRating.value = star
 }
 
-function submitRating() {
-  // Check if you are logged in
-  const currentUser = JSON.parse(localStorage.getItem('user') || 'null')
+async function submitRating() {
+  const currentUser = auth.getCurrentUser()
   if (!currentUser) {
     alert('Please log in to rate.')
-    window.location.href = '/login'
+    router.push('/login')
     return
   }
-  // Save Ratings
-  const key = `ratings_${props.recipeId}`
-  const existing = JSON.parse(localStorage.getItem(key) || '[]')
-  existing.push(selectedRating.value)
-  localStorage.setItem(key, JSON.stringify(existing))
-  // Updating of average scores
-  loadRatings()
+  if (!selectedRating.value) return
+
+  await store.rateRecipe(props.recipeId, currentUser.id, selectedRating.value)
+
+  await loadRatings()
+
   selectedRating.value = 0
 }
 
-function loadRatings() {
-  const key = `ratings_${props.recipeId}`
-  const existing = JSON.parse(localStorage.getItem(key) || '[]')
-  if (existing.length) {
-    const total = existing.reduce((sum, r) => sum + r, 0)
-    averageRating.value = total / existing.length
-    totalRatings.value = existing.length
-  } else {
-    averageRating.value = null
-    totalRatings.value = 0
-  }
+async function loadRatings() {
+  const currentUser = auth.getCurrentUser()
+  myRating.value = currentUser ? await store.getMyRating(props.recipeId, currentUser.id) : null
+
+  const summary = await store.getRecipeRatingSummary(props.recipeId)
+  averageRating.value = summary.avg ?? null
+  totalRatings.value = summary.count ?? 0
 }
 </script>
 

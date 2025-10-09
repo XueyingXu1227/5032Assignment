@@ -1,5 +1,3 @@
-// src/router/index.js
-import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../pages/Home.vue'
 import Signup from '../pages/Signup.vue'
 import Programs from '../pages/Programs.vue'
@@ -10,6 +8,8 @@ import About from '../pages/About.vue'
 import Login from '../pages/Login.vue'
 import UserManagement from '../pages/UserManagement.vue'
 import ContentManagement from '../pages/ContentManagement.vue'
+import { createRouter, createWebHistory } from 'vue-router'
+import auth from '@/services/auth'
 
 const routes = [
   { path: '/', name: 'Home', component: Home },
@@ -30,12 +30,14 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
+  const me = auth.getCurrentUser()
+  if (to.meta?.requiresAuth && !me) return next('/login')
+
   if (to.meta?.requiresAdmin) {
-    const u = JSON.parse(localStorage.getItem('user') || 'null')
-    if (!u || u.role !== 'admin') return next('/login')
+    const role = auth.getCurrentUserRole()
+    if (role !== 'admin') return next('/login')
   }
   next()
 })
-
 export default router

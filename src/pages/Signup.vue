@@ -61,7 +61,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { normalizeUsername, sha256 } from '@/utils/security'
+//import { normalizeUsername, sha256 } from '@/utils/security'
+import auth from '@/services/auth'
 
 // User input fields
 const username = ref('')
@@ -111,28 +112,18 @@ const handleSubmit = async () => {
   validatePassword()
   validateConfirmPassword()
 
-  if (!usernameError.value && !passwordError.value && !confirmPasswordError.value) {
-    // Unified Purification Username
-    const safeUsername = normalizeUsername(username.value)
+  if (usernameError.value || passwordError.value || confirmPasswordError.value) return
 
-    // Rename checking
-    if (localStorage.getItem(`user:${safeUsername}`)) {
-      usernameError.value = 'Username already exists'
-      return
-    }
-
-    const passwordHash = await sha256(password.value)
-
-    // Save User Objects
-    const userObject = {
-      username: safeUsername,
-      passwordHash,
-      role: 'user',
-    }
-
-    localStorage.setItem(`user:${safeUsername}`, JSON.stringify(userObject))
+  try {
+    await auth.signUp(username.value, password.value)
     alert('Registration successful!')
     router.push('/login')
+  } catch (err) {
+    if (err?.code === 'USER_EXISTS') {
+      usernameError.value = 'Username already exists'
+    } else {
+      usernameError.value = 'Registration failed'
+    }
   }
 }
 </script>

@@ -1,26 +1,22 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import auth from '@/services/auth'
 
+const router = useRouter()
 const username = ref('')
 const isAdmin = ref(false)
 
-onMounted(() => {
-  const storedUser = localStorage.getItem('user')
-  if (storedUser) {
-    try {
-      const parsedUser = JSON.parse(storedUser)
-      username.value = parsedUser.username
-      isAdmin.value = parsedUser.role === 'admin'
-    } catch (e) {
-      console.error('Failed to parse user:', e)
-    }
-  }
+onMounted(async () => {
+  const me = auth.getCurrentUser()
+  username.value = me?.username || me?.email || ''
+  const role = auth.getCurrentUserRole()
+  isAdmin.value = role === 'admin'
 })
 
-// Logout logic, clear localStorage and refresh page
-const logout = () => {
-  localStorage.removeItem('user')
-  location.reload()
+const logout = async () => {
+  await auth.signOut()
+  router.push('/login')
 }
 </script>
 

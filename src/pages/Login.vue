@@ -42,10 +42,11 @@
 </template>
 
 <script setup>
+import auth from '@/services/auth'
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { normalizeUsername, sha256 } from '@/utils/security'
-import { onMounted } from 'vue'
+//import { normalizeUsername, sha256 } from '@/utils/security'
+//import { onMounted } from 'vue'
 
 // input field
 const username = ref('')
@@ -57,17 +58,6 @@ const passwordError = ref('')
 
 const router = useRouter()
 
-// Initialise administrator account (hash storage)
-onMounted(async () => {
-  if (!localStorage.getItem('admin')) {
-    const adminHash = await sha256('admin123')
-    localStorage.setItem(
-      'admin',
-      JSON.stringify({ username: 'admin', passwordHash: adminHash, role: 'admin' }),
-    )
-  }
-})
-
 const handleLogin = async () => {
   usernameError.value = ''
   passwordError.value = ''
@@ -76,41 +66,21 @@ const handleLogin = async () => {
     usernameError.value = 'Username is required'
     return
   }
-
   if (!password.value) {
     passwordError.value = 'Password is required'
     return
   }
 
-  const safeUsername = normalizeUsername(username.value)
-  // Retrieve the localStorage data corresponding to the currently entered username.
-  const storedUser = JSON.parse(localStorage.getItem(`user:${safeUsername}`) || 'null')
-
-  // Check if it is an administrator account
-  const adminAccount = JSON.parse(localStorage.getItem('admin') || 'null')
-  const inputHash = await sha256(password.value)
-
-  let currentUser = null
-
-  if (
-    adminAccount &&
-    safeUsername === adminAccount.username &&
-    inputHash === adminAccount.passwordHash
-  ) {
-    currentUser = { username: adminAccount.username, role: 'admin' }
-  } else if (storedUser && inputHash === storedUser.passwordHash) {
-    currentUser = { username: storedUser.username, role: storedUser.role || 'user' }
-  }
-
-  if (currentUser) {
-    localStorage.setItem('user', JSON.stringify(currentUser))
+  try {
+    await auth.signIn(username.value, password.value)
     router.replace('/')
-    setTimeout(() => location.reload(), 100)
-  } else {
-    if (!storedUser && (!adminAccount || safeUsername !== 'admin')) {
+  } catch (e) {
+    if (e?.code === 'USER_NOT_FOUND') {
       usernameError.value = 'Username does not exist'
-    } else {
+    } else if (e?.code === 'WRONG_PASSWORD') {
       passwordError.value = 'Incorrect password'
+    } else {
+      passwordError.value = 'Login failed'
     }
   }
 }

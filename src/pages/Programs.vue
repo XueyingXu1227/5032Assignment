@@ -1,11 +1,19 @@
 <script setup>
 import Rating from '@/components/Rating.vue'
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import store from '@/services/storage'
 
-const recipes = ref([
-  { id: 'recipe1', name: 'Green Salad', description: 'A healthy green salad.' },
-  { id: 'recipe2', name: 'Fruit Bowl', description: 'Mixed seasonal fruits.' },
-])
+const recipes = ref([])
+
+onMounted(async () => {
+  recipes.value = await store.getRecipes()
+  if (!recipes.value || recipes.value.length === 0) {
+    recipes.value = [
+      { id: 'recipe1', name: 'Green Salad', description: 'A healthy green salad.' },
+      { id: 'recipe2', name: 'Fruit Bowl', description: 'Mixed seasonal fruits.' },
+    ]
+  }
+})
 </script>
 
 <template>
