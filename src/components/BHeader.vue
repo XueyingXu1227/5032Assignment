@@ -49,10 +49,15 @@ async function logout() {
     <router-link to="/quiz">Self-check Quiz</router-link>
     <router-link to="/tracker">Habit Tracker</router-link>
     <router-link to="/community">Community</router-link>
-    <router-link v-if="isAdmin" to="/user-management">User Management</router-link>
     <router-link v-if="isAdmin" to="/content-management">Content Management</router-link>
     <router-link to="/learn">Learn</router-link>
     <router-link to="/map">Healthy Map</router-link>
+    <li class="nav-item" v-if="isAdmin">
+      <RouterLink class="nav-link" to="/admin">Dashboard</RouterLink>
+    </li>
+    <li class="nav-item" v-if="isAdmin">
+      <RouterLink class="nav-link" to="/analytics">Analytics</RouterLink>
+    </li>
 
     <span v-if="displayName">
       Welcome, {{ displayName }} |

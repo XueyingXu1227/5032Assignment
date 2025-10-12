@@ -5,6 +5,27 @@ import { exportCSV, exportPDF } from '@/services/export'
 import { sendEmail, arrayBufferToBase64, textToBase64 } from '@/services/email'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { logEvent } from '@/services/analyticsService'
+import { enqueue, flush } from '@/services/offlineQueue'
+onMounted(() => {
+  flush(async (t) => {
+    if (t.name === 'resource_click') await logEvent('resource_click', { slug: t.payload?.slug })
+  })
+})
+
+const openResource = async (item) => {
+  const slug = item.slug || item.id || item.title || 'unknown'
+  try {
+    if (navigator.onLine) {
+      await logEvent('resource_click', { slug })
+    } else {
+      enqueue('resource_click', { slug, when: Date.now() })
+    }
+  } catch (e) {
+    enqueue('resource_click', { slug, when: Date.now() })
+  }
+  if (item.url) window.open(item.url, '_blank', 'noopener')
+}
 
 // ——  About ——
 const aboutParas = [
@@ -248,7 +269,7 @@ function onExportPDF() {
               <td>{{ r.type }}</td>
               <td>{{ r.topic }}</td>
               <td>
-                <a :href="r.url" target="_blank" rel="noopener">Open</a>
+                <a href="#" @click.prevent="openResource(r)">Open</a>
               </td>
             </tr>
             <tr v-if="paged.length === 0">

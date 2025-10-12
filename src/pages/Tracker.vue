@@ -1,6 +1,29 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { exportCSV, exportPDF } from '@/services/export'
+import { logEvent } from '@/services/analyticsService'
+import { enqueue, flush } from '@/services/offlineQueue'
+
+async function flushQueue() {
+  await flush(async (task) => {
+    if (task.name === 'habit_update') {
+      await logEvent('habit_update')
+    }
+    // There are other types that can be expanded here in the future
+  })
+}
+
+function onOnline() {
+  flushQueue()
+}
+
+onMounted(() => {
+  window.addEventListener('online', onOnline)
+  flushQueue()
+})
+onUnmounted(() => {
+  window.removeEventListener('online', onOnline)
+})
 
 // ---- Simple data model (use localStorage first; it's easy to connect to Firestore/service later) ----
 const LS_KEY = 'habits'
@@ -19,7 +42,7 @@ function save() {
   localStorage.setItem(LS_KEY, JSON.stringify(list.value))
 }
 
-function addEntry() {
+async function addEntry() {
   if (!form.value.date || !form.value.type || !form.value.minutes) return
   list.value.push({
     id: crypto.randomUUID(),
@@ -28,6 +51,15 @@ function addEntry() {
   })
   save()
   form.value.note = ''
+  try {
+    if (navigator.onLine) {
+      await logEvent('habit_update')
+    } else {
+      enqueue('habit_update', { when: Date.now() })
+    }
+  } catch (e) {
+    enqueue('habit_update', { when: Date.now() })
+  }
 }
 
 function startOfWeek(d) {
@@ -155,7 +187,6 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- 汇总 -->
     <div class="alert alert-info py-2">
       <strong>Total minutes this week:</strong> {{ totalMinutes }}.
       <span v-for="x in byType" :key="x.type" class="badge bg-secondary ms-2">
