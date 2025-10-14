@@ -6,7 +6,7 @@ import Tracker from '../pages/Tracker.vue'
 import Community from '../pages/Community.vue'
 import Learn from '../pages/Learn.vue'
 import Login from '../pages/Login.vue'
-import ContentManagement from '../pages/ContentManagement.vue'
+import EmailManagement from '../pages/EmailManagement.vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import auth from '@/services/auth'
 import Map from '../pages/Map.vue'
@@ -21,7 +21,7 @@ const routes = [
   { path: '/tracker', name: 'Tracker', component: Tracker },
   { path: '/community', name: 'Community', component: Community },
   { path: '/login', name: 'Login', component: Login },
-  { path: '/content-management', component: ContentManagement, meta: { requiresAdmin: true } },
+  { path: '/emailmanagement', component: EmailManagement, meta: { requiresAdmin: true } },
   { path: '/learn', name: 'Learn', component: Learn },
   { path: '/map', name: 'Map', component: Map },
   { path: '/analytics', name: 'Analytics', component: AnalyticsView, meta: { requiresAuth: true } },

@@ -10,10 +10,13 @@ const admin = require('firebase-admin')
 try {
   admin.app()
 } catch {
-  admin.initializeApp()
+  admin
+    .initializeApp
+    //{storageBucket: 'fit5032assessment-xu.appspot.com',}
+    ()
 }
 const db = admin.firestore()
-const storage = admin.storage()
+//const storage = admin.storage()
 
 setGlobalOptions({ region: 'us-central1' })
 
@@ -21,7 +24,6 @@ setGlobalOptions({ region: 'us-central1' })
 const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY')
 const FROM_EMAIL = defineSecret('FROM_EMAIL')
 
-// 工具：验证用户 & 取角色
 async function getUserAndRole(req) {
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
@@ -38,11 +40,14 @@ async function getUserAndRole(req) {
   return { uid: decoded.uid, role }
 }
 
-// 工具：把 Storage 里的文件读成 base64 附件
 async function fetchStorageAttachments(items = []) {
+  if (!items || items.length === 0) return []
+  const bucket = admin.storage().bucket()
   const out = []
   for (const it of items) {
-    const file = storage.bucket().file(it.path) // 例如 attachments/report.pdf
+    const file = bucket.file(it.path)
+    const [exists] = await file.exists()
+    if (!exists) throw new Error(`Storage file not found: ${it.path}`)
     const [buf] = await file.download()
     out.push({
       filename: it.filename || it.path.split('/').pop(),
@@ -54,10 +59,8 @@ async function fetchStorageAttachments(items = []) {
   return out
 }
 
-// 健康检查
-exports.ping = onRequest((req, res) => res.status(200).send('pong ✅'))
+exports.ping = onRequest((req, res) => res.status(200).send('pong'))
 
-// ✅ D.2: 单发（支持附件）
 exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -69,14 +72,12 @@ exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (re
 
       sgMail.setApiKey(SENDGRID_API_KEY.value())
 
-      // 处理 base64 附件
       const atts = (attachments || []).map((a) => ({
         filename: a.filename,
         type: a.type || 'application/octet-stream',
         content: a.content, // base64
         disposition: 'attachment',
       }))
-      // 处理 Storage 附件
       const storageAtts = await fetchStorageAttachments(storageAttachments || [])
 
       await sgMail.send({
@@ -96,7 +97,6 @@ exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (re
   })
 })
 
-// ✅ F.1: 群发（仅 admin），分片发送 & 记录
 exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -126,11 +126,9 @@ exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async
       }))
       const atts = [...base64Atts, ...storageAtts]
 
-      // 读收件人邮箱
       const docs = await db.getAll(...userIds.map((id) => db.collection('users').doc(id)))
       const emails = docs.map((d) => (d.exists ? d.data().email : null)).filter((e) => !!e)
 
-      // 建批次记录
       const jobRef = await db.collection('mail_jobs').add({
         createdBy: uid,
         subject,
@@ -141,7 +139,6 @@ exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       })
 
-      // 分片发送（每 300 封一批，逐个投递便于失败重试 & 速率可控）
       let ok = 0,
         fail = 0
       for (const email of emails) {
