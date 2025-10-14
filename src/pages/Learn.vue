@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import store from '@/services/storage'
 import { exportCSV, exportPDF } from '@/services/export'
-import { sendEmail, arrayBufferToBase64, textToBase64 } from '@/services/email'
+import { sendEmail, arrayBufferToBase64, textToBase64 } from '@/services/email.js'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { logEvent } from '@/services/analyticsService'

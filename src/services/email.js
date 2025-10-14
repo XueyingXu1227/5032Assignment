@@ -1,25 +1,43 @@
+console.log('VITE_FUNCTIONS_BASE =', import.meta.env.VITE_FUNCTIONS_BASE)
+
+// src/services/email.js
 import { getAuth } from 'firebase/auth'
 
-const BASE = import.meta.env.VITE_FUNCTIONS_BASE
+// ✅ 兜底：如果 .env 没生效，就用你刚部署成功的云函数域名
+const DEFAULT_BASE = 'https://us-central1-fit5032assessment-xu.cloudfunctions.net'
+const BASE = (import.meta.env && import.meta.env.VITE_FUNCTIONS_BASE) || DEFAULT_BASE
+console.log('VITE_FUNCTIONS_BASE =', import.meta.env?.VITE_FUNCTIONS_BASE, '| BASE =', BASE)
 
-export async function sendEmail({ to, subject, html, attachments = [] }) {
+async function authedFetch(path, payload) {
   const auth = getAuth()
   const user = auth.currentUser
   const token = user ? await user.getIdToken() : ''
-
-  const res = await fetch(`${BASE}/email`, {
+  const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token ? `Bearer ${token}` : '',
-    },
-    body: JSON.stringify({ to, subject, html, attachments }),
+    headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+    body: JSON.stringify(payload),
   })
-
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(txt || `HTTP ${res.status}`)
+  }
   return res.json()
 }
 
+export function sendEmail({ to, subject, html, attachments = [], storageAttachments = [] }) {
+  return authedFetch('/email', { to, subject, html, attachments, storageAttachments })
+}
+export function sendBulkEmail({
+  userIds,
+  subject,
+  html,
+  attachments = [],
+  storageAttachments = [],
+}) {
+  return authedFetch('/bulkEmail', { userIds, subject, html, attachments, storageAttachments })
+}
+
+// 可选：把 ArrayBuffer/Text 转 base64
 export function arrayBufferToBase64(buf) {
   const bytes = new Uint8Array(buf)
   let binary = ''
