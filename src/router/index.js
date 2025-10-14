@@ -3,7 +3,6 @@ import Signup from '../pages/Signup.vue'
 import Programs from '../pages/Programs.vue'
 import Quiz from '../pages/Quiz.vue'
 import Tracker from '../pages/Tracker.vue'
-import Community from '../pages/Community.vue'
 import Learn from '../pages/Learn.vue'
 import Login from '../pages/Login.vue'
 import EmailManagement from '../pages/EmailManagement.vue'
@@ -19,7 +18,6 @@ const routes = [
   { path: '/programs', component: Programs },
   { path: '/quiz', name: 'Quiz', component: Quiz },
   { path: '/tracker', name: 'Tracker', component: Tracker },
-  { path: '/community', name: 'Community', component: Community },
   { path: '/login', name: 'Login', component: Login },
   { path: '/emailmanagement', component: EmailManagement, meta: { requiresAdmin: true } },
   { path: '/learn', name: 'Learn', component: Learn },
@@ -67,6 +65,13 @@ router.beforeEach(async (to, from, next) => {
   }
 
   return next()
+})
+
+router.afterEach(() => {
+  setTimeout(() => {
+    const main = document.getElementById('main')
+    if (main) main.focus()
+  }, 0)
 })
 
 export default router

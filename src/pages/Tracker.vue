@@ -234,7 +234,7 @@ onMounted(load)
 
 <template>
   <div class="container mt-5">
-    <h2 class="mb-3">Habit Tracker</h2>
+    <h1 class="mb-3">Habit Tracker</h1>
 
     <!-- input -->
     <div class="card mb-3 p-3">
@@ -334,21 +334,45 @@ onMounted(load)
         </caption>
         <thead>
           <tr>
-            <th style="width: 36px">Sel</th>
+            <th scope="col" style="width: 36px">Select</th>
 
-            <th role="button" @click="changeSort('date')">
-              Date <small v-if="sortBy === 'date'">({{ sortDir }})</small>
+            <th scope="col">
+              <button
+                class="btn btn-link p-0"
+                @click="changeSort('date')"
+                :aria-sort="
+                  sortBy === 'date' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
+                "
+              >
+                Date <small v-if="sortBy === 'date'">({{ sortDir }})</small>
+              </button>
             </th>
 
-            <th role="button" @click="changeSort('type')">
-              Type <small v-if="sortBy === 'type'">({{ sortDir }})</small>
+            <th scope="col">
+              <button
+                class="btn btn-link p-0"
+                @click="changeSort('type')"
+                :aria-sort="
+                  sortBy === 'type' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
+                "
+              >
+                Type <small v-if="sortBy === 'type'">({{ sortDir }})</small>
+              </button>
             </th>
 
-            <th role="button" @click="changeSort('minutes')">
-              Minutes <small v-if="sortBy === 'minutes'">({{ sortDir }})</small>
+            <th scope="col">
+              <button
+                class="btn btn-link p-0"
+                @click="changeSort('minutes')"
+                :aria-sort="
+                  sortBy === 'minutes' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
+                "
+              >
+                Minutes <small v-if="sortBy === 'minutes'">({{ sortDir }})</small>
+              </button>
             </th>
 
-            <th>Note</th>
+            <th scope="col">Note</th>
           </tr>
         </thead>
 

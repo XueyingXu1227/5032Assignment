@@ -7,26 +7,31 @@
       <div class="mb-3">
         <label for="email" class="form-label">Email</label>
         <input
+          id="email"
           type="email"
           class="form-control"
-          id="email"
           v-model="email"
           :class="{ 'is-invalid': emailError }"
+          required
+          aria-describedby="loginEmailErr"
         />
-        <div class="invalid-feedback">{{ emailError }}</div>
+        <p id="loginEmailErr" class="invalid-feedback" role="alert">{{ emailError }}</p>
       </div>
 
       <!-- Password -->
       <div class="mb-3">
         <label for="password" class="form-label">Password</label>
         <input
+          id="password"
           type="password"
           class="form-control"
-          id="password"
           v-model="password"
           :class="{ 'is-invalid': passwordError }"
+          required
+          minlength="6"
+          aria-describedby="loginPwdErr"
         />
-        <div class="invalid-feedback">{{ passwordError }}</div>
+        <p id="loginPwdErr" class="invalid-feedback" role="alert">{{ passwordError }}</p>
       </div>
 
       <!-- Submit -->

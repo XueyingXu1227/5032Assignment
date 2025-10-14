@@ -142,19 +142,23 @@ function routeClear() {
         <button class="btn btn-primary" @click="runSearch">Go</button>
       </div>
 
-      <span class="badge bg-secondary ms-auto" v-if="routeInfo">{{ routeInfo }}</span>
+      <span class="badge bg-secondary ms-auto" v-if="routeInfo" aria-live="polite">{{
+        routeInfo
+      }}</span>
     </div>
 
     <!-- map -->
     <div
       ref="mapEl"
+      role="application"
+      aria-label="Health map. Use arrow keys to pan and plus/minus to zoom."
       style="height: 420px; width: 100%; border-radius: 8px; border: 1px solid #eee"
     ></div>
 
     <!-- List of results -->
     <div class="mt-3" v-if="results.length">
-      <h5>Results ({{ results.length }})</h5>
-      <ul class="list-group">
+      <h5 id="results-title">Results ({{ results.length }})</h5>
+      <ul class="list-group" aria-labelledby="results-title">
         <li
           v-for="p in results"
           :key="p.id"

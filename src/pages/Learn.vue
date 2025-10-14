@@ -163,7 +163,7 @@ function onExportPDF() {
   <div class="container mt-4">
     <!-- About -->
     <section aria-labelledby="about-title" class="mb-4">
-      <h2 id="about-title" class="mb-3">About Sub-health</h2>
+      <h1 id="about-title" class="mb-3">About Sub-health</h1>
       <p v-for="(t, i) in aboutParas" :key="i">{{ t }}</p>
     </section>
 

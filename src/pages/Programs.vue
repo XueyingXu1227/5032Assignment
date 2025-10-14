@@ -18,7 +18,7 @@ onMounted(async () => {
 
 <template>
   <div class="container mt-5">
-    <h2>Healthy Recipes</h2>
+    <h1>Healthy Recipes</h1>
     <div v-for="recipe in recipes" :key="recipe.id" class="card p-3 mb-3">
       <h4>{{ recipe.name }}</h4>
       <p>{{ recipe.description }}</p>

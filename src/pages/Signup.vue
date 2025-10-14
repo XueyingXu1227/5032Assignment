@@ -3,66 +3,74 @@
     <h2 class="text-center mb-4">Sign Up</h2>
 
     <form @submit.prevent="handleSubmit" novalidate>
-      <!-- Email input box -->
+      <!-- Email -->
       <div class="mb-3">
         <label for="email" class="form-label">Email</label>
         <input
+          id="email"
           type="email"
           class="form-control"
           :class="{ 'is-invalid': emailError }"
-          id="email"
           v-model="email"
+          required
+          aria-describedby="emailHelp emailErr"
           @blur="validateEmail"
         />
-        <div class="invalid-feedback">{{ emailError }}</div>
+        <div id="emailHelp" class="form-text">We’ll never share your email.</div>
+        <p id="emailErr" class="invalid-feedback" role="alert">{{ emailError }}</p>
       </div>
-      <!-- User name input box -->
+
+      <!-- Username -->
       <div class="mb-3">
-        <label for="username" class="form-label"
-          >Username
-          <small class="text-muted">(min. 2 characters (letters, numbers, underscores))</small>
+        <label for="username" class="form-label">
+          Username <small class="text-muted">(min. 2 characters: letters/numbers/_)</small>
         </label>
         <input
+          id="username"
           type="text"
           class="form-control"
           :class="{ 'is-invalid': usernameError }"
-          id="username"
           v-model="username"
+          required
+          aria-describedby="usernameErr"
           @blur="validateUsername"
         />
-        <!-- Error message  -->
-        <div class="invalid-feedback">{{ usernameError }}</div>
+        <p id="usernameErr" class="invalid-feedback" role="alert">{{ usernameError }}</p>
       </div>
 
-      <!-- Password input box -->
+      <!-- Password -->
       <div class="mb-3">
-        <label for="password" class="form-label"
-          >Password
-          <small class="text-muted">(min. 6 characters with letters and numbers )</small></label
-        >
+        <label for="password" class="form-label">
+          Password <small class="text-muted">(min. 6 chars, letters+numbers)</small>
+        </label>
         <input
+          id="password"
           type="password"
           class="form-control"
           :class="{ 'is-invalid': passwordError }"
-          id="password"
           v-model="password"
+          required
+          minlength="6"
+          aria-describedby="pwdErr"
           @blur="validatePassword"
         />
-        <div class="invalid-feedback">{{ passwordError }}</div>
+        <p id="pwdErr" class="invalid-feedback" role="alert">{{ passwordError }}</p>
       </div>
 
-      <!-- Confirm password input box -->
+      <!-- Confirm -->
       <div class="mb-3">
         <label for="confirmPassword" class="form-label">Confirm Password</label>
         <input
+          id="confirmPassword"
           type="password"
           class="form-control"
           :class="{ 'is-invalid': confirmPasswordError }"
-          id="confirmPassword"
           v-model="confirmPassword"
+          required
+          aria-describedby="cpErr"
           @blur="validateConfirmPassword"
         />
-        <div class="invalid-feedback">{{ confirmPasswordError }}</div>
+        <p id="cpErr" class="invalid-feedback" role="alert">{{ confirmPasswordError }}</p>
       </div>
 
       <!-- Submit button -->

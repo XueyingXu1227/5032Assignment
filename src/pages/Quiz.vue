@@ -61,7 +61,7 @@ onMounted(load)
 
 <template>
   <div class="container mt-5">
-    <h2 class="mb-3">Self-check Quiz (Results)</h2>
+    <h1 class="mb-3">Self-check Quiz (Results)</h1>
 
     <div class="alert alert-info">
       Minimal version for E.4: record your latest score here to build a results list. Later we can

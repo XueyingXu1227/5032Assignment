@@ -194,7 +194,7 @@ async function onSendBulk() {
 
 <template>
   <div class="container py-4">
-    <h2 class="mb-3">Admin · Bulk Email</h2>
+    <h1 class="mb-3">Admin · Bulk Email</h1>
 
     <div class="card shadow-sm">
       <div class="card-body">

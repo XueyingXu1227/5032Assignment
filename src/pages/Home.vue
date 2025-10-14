@@ -6,7 +6,7 @@ import FeatureCard from '../components/FeatureCard.vue'
   <div>
     <!-- Hero welcome area -->
     <div class="container text-center my-5">
-      <h2>Rediscovering sub-health</h2>
+      <h1>Rediscovering sub-health</h1>
       <p>Welcome to the Healthy Living Recommendation Platform</p>
       <router-link to="/quiz" class="btn btn-outline-dark">Start self-testing</router-link>
     </div>
@@ -44,11 +44,6 @@ import FeatureCard from '../components/FeatureCard.vue'
       <router-link to="/signup">[Sign up]</router-link>
       <router-link to="/login">[Log in]</router-link>
     </div>
-
-    <!-- Footer area -->
-    <footer class="bg-light text-center py-3">
-      <small>© 2025 Xueying Xu | <a href="#"></a> </small>
-    </footer>
   </div>
 </template>
 

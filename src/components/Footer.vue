@@ -1,20 +1,16 @@
-<!-- Footer.vue -->
 <template>
-  <footer class="footer">
-    <p>© 2025 Xueying Xu | English / 中文</p>
+  <footer class="site-footer" role="contentinfo" aria-label="Global footer">
+    <p class="mb-0 small">© 2025 Xueying Xu · 34657762</p>
   </footer>
 </template>
 
-<script>
-export default {
-  name: 'Footer',
-}
-</script>
+<script></script>
 
 <style scoped>
-.footer {
+.site-footer {
   text-align: center;
   padding: 20px;
-  background-color: #f8f8f8;
+  background: #f8f8f8;
+  color: #666;
 }
 </style>

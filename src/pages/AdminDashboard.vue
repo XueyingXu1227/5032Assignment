@@ -1,6 +1,6 @@
 <template>
   <div class="container py-3">
-    <h2 class="mb-3">Admin Dashboard</h2>
+    <h1 class="mb-3">Admin Dashboard</h1>
 
     <div class="row g-3 mb-3">
       <div class="col-sm-6 col-lg-3" v-for="k in kpis" :key="k.label">
