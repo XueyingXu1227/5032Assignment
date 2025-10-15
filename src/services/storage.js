@@ -1,3 +1,6 @@
+import { db } from '@/Firebase/init'
+import { doc, setDoc, getDoc, getDocs, collection, serverTimestamp } from 'firebase/firestore'
+
 const PREFIX = 'fit5032_'
 
 function getLS(key, fallback) {
@@ -13,26 +16,37 @@ function setLS(key, val) {
 }
 
 export default {
+  // --- Recipes & Rating (C.3) ---
   async getRecipes() {
     return getLS('recipes', [])
   },
+
+  // Get current user ratings for a recipe
   async getMyRating(recipeId, userId) {
-    const all = getLS('ratings', {})
-    return all[recipeId]?.[userId] ?? null
+    const snap = await getDoc(doc(db, 'recipes', recipeId, 'ratings', userId))
+    return snap.exists() ? snap.data().score : null
   },
+
+  // Submit ratings (repeat ratings by the same user will overwrite old values)
   async rateRecipe(recipeId, userId, stars) {
-    const all = getLS('ratings', {})
-    all[recipeId] = all[recipeId] || {}
-    all[recipeId][userId] = stars
-    setLS('ratings', all)
+    const ref = doc(db, 'recipes', recipeId, 'ratings', userId)
+    await setDoc(ref, { score: stars, updatedAt: serverTimestamp() }, { merge: true })
   },
+
+  // Calculation of average score and total number of ratings
   async getRecipeRatingSummary(recipeId) {
-    const all = getLS('ratings', {})
-    const map = all[recipeId] || {}
-    const vals = Object.values(map)
-    if (!vals.length) return { avg: 0, count: 0 }
-    const avg = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10
-    return { avg, count: vals.length }
+    const snaps = await getDocs(collection(db, 'recipes', recipeId, 'ratings'))
+    let sum = 0
+    let count = 0
+    snaps.forEach((docSnap) => {
+      const s = docSnap.data().score
+      if (typeof s === 'number') {
+        sum += s
+        count++
+      }
+    })
+    const avg = count ? Math.round((sum / count) * 10) / 10 : 0
+    return { avg, count }
   },
 
   // --- Meal plan (E.4/D.2) ---

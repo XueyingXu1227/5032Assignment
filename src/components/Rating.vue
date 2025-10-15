@@ -33,6 +33,7 @@ const selectedRating = ref(0)
 const myRating = ref(null)
 const averageRating = ref(null)
 const totalRatings = ref(0)
+const router = useRouter()
 
 onMounted(async () => {
   await loadRatings()
