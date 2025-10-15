@@ -1,11 +1,9 @@
-// functions/index.cjs
 const { onRequest } = require('firebase-functions/v2/https')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const { defineSecret } = require('firebase-functions/params')
 const functions = require('firebase-functions')
 const sgMail = require('@sendgrid/mail')
 const cors = require('cors')({ origin: true })
-
 const admin = require('firebase-admin')
 try {
   admin.app()
@@ -163,6 +161,37 @@ exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async
     } catch (err) {
       functions.logger.error('bulk email error', err)
       return res.status(500).json({ ok: false, error: err.message })
+    }
+  })
+})
+
+// --- Nominatim proxy (CORS-safe) ---
+const fetch = require('node-fetch') // 顶部若已 require 过就删这一行，保留一份即可
+
+exports.nominatim = onRequest(async (req, res) => {
+  return cors(req, res, async () => {
+    try {
+      const usp = new URLSearchParams(req.query)
+      if (!usp.has('format')) usp.set('format', 'jsonv2')
+      if (!usp.has('accept-language')) usp.set('accept-language', 'en')
+      if (!usp.has('limit')) usp.set('limit', '10')
+
+      const url = `https://nominatim.openstreetmap.org/search?${usp.toString()}`
+      const r = await fetch(url, {
+        headers: {
+          // 换成你的真实邮箱（Nominatim 要求）
+          'User-Agent': 'fit5032-assignment/1.0 (your.email@domain.com)',
+          Accept: 'application/json',
+        },
+      })
+
+      const text = await r.text()
+      res.set('Content-Type', 'application/json; charset=utf-8')
+      res.set('Cache-Control', 'public, max-age=300')
+      res.status(r.status).send(text)
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ error: 'nominatim proxy failed', detail: String(e) })
     }
   })
 })

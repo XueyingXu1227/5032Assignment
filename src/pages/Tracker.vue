@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { exportCSV, exportPDF } from '@/services/export'
 import { logEvent } from '@/services/analyticsService'
 import { enqueue, flush } from '@/services/offlineQueue'
@@ -22,7 +22,7 @@ onUnmounted(() => {
   window.removeEventListener('online', onOnline)
 })
 
-// ---------- Simple data model (localStorage; easy to follow up with Firestore) ----------
+//Simple data model
 const LS_KEY = 'habits'
 const form = ref({
   date: new Date().toISOString().slice(0, 10),
@@ -39,7 +39,6 @@ function save() {
   localStorage.setItem(LS_KEY, JSON.stringify(list.value))
 }
 
-// instrumental function
 function fmt(d) {
   return new Date(d).toISOString().slice(0, 10)
 }
@@ -48,17 +47,24 @@ function addDays(d, n) {
   x.setDate(x.getDate() + n)
   return x
 }
-
 const todayStr = fmt(new Date())
 
-// ---------- Any date range (end date "inclusive") ----------
+//Date range
 const weekStart = ref(fmt(new Date()))
 const weekEnd = ref(fmt(new Date()))
-
-//  End >= Beginning
 watch(weekStart, (val) => {
-  if (new Date(weekEnd.value) < new Date(val)) {
-    weekEnd.value = val
+  if (new Date(weekEnd.value) < new Date(val)) weekEnd.value = val
+})
+watch(weekEnd, (val) => {
+  const end = new Date(val),
+    start = new Date(weekStart.value),
+    today = new Date(todayStr)
+  if (end > today) {
+    weekEnd.value = todayStr
+    return
+  }
+  if (end < start) {
+    weekEnd.value = weekStart.value
   }
 })
 
@@ -69,18 +75,13 @@ async function addEntry() {
     return
   }
   const usedDate = form.value.date
-
-  list.value.push({
-    id: crypto.randomUUID(),
-    ...form.value,
-    minutes: Number(form.value.minutes),
-  })
+  list.value.push({ id: crypto.randomUUID(), ...form.value, minutes: Number(form.value.minutes) })
   save()
   form.value.note = ''
 
-  const d = new Date(usedDate)
-  const s0 = new Date(weekStart.value)
-  const e0 = new Date(weekEnd.value)
+  const d = new Date(usedDate),
+    s0 = new Date(weekStart.value),
+    e0 = new Date(weekEnd.value)
   if (d < s0) weekStart.value = fmt(d)
   if (d > e0) weekEnd.value = fmt(d)
 
@@ -95,7 +96,7 @@ async function addEntry() {
   }
 }
 
-// ---------- Data in the current range ----------
+//Data in range
 const weekly = computed(() => {
   const s = new Date(weekStart.value)
   const eExclusive = addDays(new Date(weekEnd.value), 1)
@@ -116,25 +117,43 @@ const byType = computed(() => {
   return Object.entries(m).map(([type, minutes]) => ({ type, minutes }))
 })
 
-// ---------- interactive table ----------
-const q = ref(localStorage.getItem('trk_q') || '')
+//interactive table
 const sortBy = ref(localStorage.getItem('trk_sortBy') || 'date')
 const sortDir = ref(localStorage.getItem('trk_sortDir') || 'desc')
 const pageSize = 10
 const page = ref(Number(localStorage.getItem('trk_page') || 1))
 
-const filteredSorted = computed(() => {
-  const kw = q.value.trim().toLowerCase()
-  let rows = weekly.value
+// column filtering
+const colFilters = reactive({
+  from: '',
+  to: '',
+  type: '',
+  minMin: '',
+  maxMin: '',
+  note: '',
+})
+const typeOptions = computed(() => Array.from(new Set(weekly.value.map((r) => r.type))).sort())
+const norm = (s) => (s ?? '').toString().trim().toLowerCase()
 
-  if (kw) {
-    rows = rows.filter(
-      (r) =>
-        (r.date || '').toLowerCase().includes(kw) ||
-        (r.type || '').toLowerCase().includes(kw) ||
-        (r.note || '').toLowerCase().includes(kw),
-    )
-  }
+const filteredSorted = computed(() => {
+  const from = colFilters.from ? new Date(colFilters.from) : null
+  const to = colFilters.to ? new Date(colFilters.to) : null
+  const fType = norm(colFilters.type)
+  const minM = colFilters.minMin === '' ? null : Number(colFilters.minMin)
+  const maxM = colFilters.maxMin === '' ? null : Number(colFilters.maxMin)
+  const fNote = norm(colFilters.note)
+
+  let rows = weekly.value.filter((r) => {
+    const d = new Date(r.date)
+    const minutes = Number(r.minutes) || 0
+    const okFrom = !from || d >= from
+    const okTo = !to || d <= to
+    const okType = !fType || norm(r.type) === fType
+    const okMin = minM === null || minutes >= minM
+    const okMax = maxM === null || minutes <= maxM
+    const okNote = !fNote || norm(r.note).includes(fNote)
+    return okFrom && okTo && okType && okMin && okMax && okNote
+  })
 
   const dir = sortDir.value === 'asc' ? 1 : -1
   rows = [...rows].sort((a, b) => {
@@ -146,8 +165,8 @@ const filteredSorted = computed(() => {
       A = Number(a.minutes) || 0
       B = Number(b.minutes) || 0
     } else {
-      A = (a.type || '').toString().toLowerCase()
-      B = (b.type || '').toString().toLowerCase()
+      A = norm(a[sortBy.value])
+      B = norm(b[sortBy.value])
     }
     if (A < B) return -1 * dir
     if (A > B) return 1 * dir
@@ -165,9 +184,8 @@ const paged = computed(() => {
 })
 
 function changeSort(field) {
-  if (sortBy.value === field) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
+  if (sortBy.value === field) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  else {
     sortBy.value = field
     sortDir.value = 'asc'
   }
@@ -176,41 +194,19 @@ function changeSort(field) {
 function goto(p) {
   if (p >= 1 && p <= totalPages.value) page.value = p
 }
+function goFirstPage() {
+  page.value = 1
+}
 
-watch([q, sortBy, sortDir, page], () => {
-  localStorage.setItem('trk_q', q.value)
+watch([sortBy, sortDir, page], () => {
   localStorage.setItem('trk_sortBy', sortBy.value)
   localStorage.setItem('trk_sortDir', sortDir.value)
   localStorage.setItem('trk_page', String(page.value))
 })
 
-// End >= Start
-watch(weekStart, (val) => {
-  if (new Date(weekEnd.value) < new Date(val)) {
-    weekEnd.value = val
-  }
-})
-
-/** End cannot be greater than today; it cannot be less than Start.  */
-watch(weekEnd, (val) => {
-  const end = new Date(val)
-  const start = new Date(weekStart.value)
-  const today = new Date(todayStr)
-
-  if (end > today) {
-    weekEnd.value = todayStr
-    return
-  }
-  if (end < start) {
-    weekEnd.value = weekStart.value
-  }
-})
-
-// ---------- export ----------
+// export
 const selectedIds = ref([])
 const exportHeaders = ['Date', 'Type', 'Minutes', 'Note']
-
-// Ticked → Export Ticked; Unchecked → Export "Filtered All Results"
 const exportRows = computed(() => {
   const src = selectedIds.value.length
     ? filteredSorted.value.filter((r) => selectedIds.value.includes(r.id))
@@ -263,9 +259,7 @@ onMounted(load)
           <input type="text" v-model="form.note" class="form-control" placeholder="optional" />
         </div>
       </div>
-      <div class="mt-2">
-        <button class="btn btn-primary" @click="addEntry">Add</button>
-      </div>
+      <div class="mt-2"><button class="btn btn-primary" @click="addEntry">Add</button></div>
     </div>
 
     <!-- Custom Date Range + Toolbar -->
@@ -287,9 +281,9 @@ onMounted(load)
         :max="todayStr"
       />
 
-      <small class="text-muted ms-auto">
-        Selected: {{ selectedIds.length }} / {{ paged.length }}
-      </small>
+      <small class="text-muted ms-auto"
+        >Selected: {{ selectedIds.length }} / {{ paged.length }}</small
+      >
 
       <div class="btn-group">
         <button
@@ -305,74 +299,129 @@ onMounted(load)
         <button class="btn btn-outline-secondary" @click="onExportCSV">Export CSV</button>
         <button class="btn btn-outline-secondary" @click="onExportPDF">Export PDF</button>
       </div>
-
-      <!-- search -->
-      <label class="visually-hidden" for="trkSearch">Search in range</label>
-      <input
-        id="trkSearch"
-        class="form-control"
-        style="max-width: 220px"
-        type="search"
-        placeholder="Search date/type/note …"
-        v-model="q"
-        @input="page = 1"
-      />
+      <!-- Sort buttons -->
+      <div class="btn-group" role="group" aria-label="Sort">
+        <button
+          class="btn btn-outline-secondary"
+          :aria-pressed="sortBy === 'date'"
+          @click="changeSort('date')"
+        >
+          Date <small v-if="sortBy === 'date'">({{ sortDir }})</small>
+        </button>
+        <button
+          class="btn btn-outline-secondary"
+          :aria-pressed="sortBy === 'type'"
+          @click="changeSort('type')"
+        >
+          Type <small v-if="sortBy === 'type'">({{ sortDir }})</small>
+        </button>
+        <button
+          class="btn btn-outline-secondary"
+          :aria-pressed="sortBy === 'minutes'"
+          @click="changeSort('minutes')"
+        >
+          Minutes <small v-if="sortBy === 'minutes'">({{ sortDir }})</small>
+        </button>
+      </div>
     </div>
 
     <div class="alert alert-info py-2">
       <strong>Total minutes in range:</strong> {{ totalMinutes }}.
-      <span v-for="x in byType" :key="x.type" class="badge bg-secondary ms-2">
-        {{ x.type }}: {{ x.minutes }}
-      </span>
+      <span v-for="x in byType" :key="x.type" class="badge bg-secondary ms-2"
+        >{{ x.type }}: {{ x.minutes }}</span
+      >
     </div>
 
     <!-- interactive table -->
     <div class="table-responsive">
-      <table class="table">
-        <caption class="visually-hidden">
-          Habit records table within custom date range, with search, sort and pagination
+      <table class="table align-middle" aria-describedby="tracker-caption">
+        <caption id="tracker-caption" class="visually-hidden">
+          Sortable, paginated habit records table with individual column filters (second header
+          row).
         </caption>
+
         <thead>
+          <!-- sorted line -->
           <tr>
             <th scope="col" style="width: 36px">Select</th>
-
-            <th scope="col">
-              <button
-                class="btn btn-link p-0"
-                @click="changeSort('date')"
-                :aria-sort="
-                  sortBy === 'date' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-                "
-              >
-                Date <small v-if="sortBy === 'date'">({{ sortDir }})</small>
-              </button>
-            </th>
-
-            <th scope="col">
-              <button
-                class="btn btn-link p-0"
-                @click="changeSort('type')"
-                :aria-sort="
-                  sortBy === 'type' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-                "
-              >
-                Type <small v-if="sortBy === 'type'">({{ sortDir }})</small>
-              </button>
-            </th>
-
-            <th scope="col">
-              <button
-                class="btn btn-link p-0"
-                @click="changeSort('minutes')"
-                :aria-sort="
-                  sortBy === 'minutes' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'
-                "
-              >
-                Minutes <small v-if="sortBy === 'minutes'">({{ sortDir }})</small>
-              </button>
-            </th>
-
+            <th scope="col">Date</th>
+            <th scope="col">Type</th>
+            <th scope="col">Minutes</th>
             <th scope="col">Note</th>
+          </tr>
+
+          <!-- Column Filter Rows -->
+          <tr>
+            <th></th>
+            <!-- Date: from / to -->
+            <th class="d-flex gap-1">
+              <label class="visually-hidden" for="f-from">From</label>
+              <input
+                id="f-from"
+                type="date"
+                class="form-control form-control-sm"
+                v-model="colFilters.from"
+                @change="goFirstPage"
+              />
+              <label class="visually-hidden" for="f-to">To</label>
+              <input
+                id="f-to"
+                type="date"
+                class="form-control form-control-sm"
+                v-model="colFilters.to"
+                @change="goFirstPage"
+              />
+            </th>
+
+            <!-- Type -->
+            <th>
+              <label class="visually-hidden" for="f-type">Filter type</label>
+              <select
+                id="f-type"
+                class="form-select form-select-sm"
+                v-model="colFilters.type"
+                @change="goFirstPage"
+              >
+                <option value="">All types</option>
+                <option v-for="opt in typeOptions" :key="opt" :value="opt">{{ opt }}</option>
+              </select>
+            </th>
+
+            <!-- Minutes: min / max -->
+            <th class="d-flex gap-1">
+              <label class="visually-hidden" for="f-min">Min</label>
+              <input
+                id="f-min"
+                type="number"
+                min="0"
+                class="form-control form-control-sm"
+                v-model.number="colFilters.minMin"
+                @input="goFirstPage"
+                placeholder="min"
+              />
+              <label class="visually-hidden" for="f-max">Max</label>
+              <input
+                id="f-max"
+                type="number"
+                min="0"
+                class="form-control form-control-sm"
+                v-model.number="colFilters.maxMin"
+                @input="goFirstPage"
+                placeholder="max"
+              />
+            </th>
+
+            <!-- Note -->
+            <th>
+              <label class="visually-hidden" for="f-note">Filter note</label>
+              <input
+                id="f-note"
+                class="form-control form-control-sm"
+                v-model.trim="colFilters.note"
+                placeholder="Filter note"
+                @input="goFirstPage"
+              />
+            </th>
           </tr>
         </thead>
 
@@ -393,9 +442,9 @@ onMounted(load)
       </table>
     </div>
 
-    <!-- subdivision -->
+    <!-- Pagination -->
     <nav class="d-flex justify-content-between align-items-center" aria-label="Pagination">
-      <span class="text-muted">Total {{ total }} / Page {{ page }} of {{ totalPages }}</span>
+      <span class="text-muted">Total {{ total }} • Page {{ page }} of {{ totalPages }}</span>
       <div class="btn-group">
         <button class="btn btn-outline-secondary" :disabled="page === 1" @click="goto(page - 1)">
           Prev
