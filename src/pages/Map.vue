@@ -1,113 +1,189 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import mapboxgl from 'mapbox-gl'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import { searchPlaces, footRoute } from '@/services/map'
 
-// 解决 Leaflet 在打包后默认图标丢失的问题（使用 CDN 图标）
-const defaultIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-})
-L.Marker.prototype.options.icon = defaultIcon
-
-// 状态
+// UI status
 const map = ref(null)
 const mapEl = ref(null)
 const me = ref(null) // {lat, lon}
-const keyword = ref('gym') // 默认关键词
-const radius = ref(2000) // 搜索半径（米）
-const results = ref([]) // 搜索结果
-let markersLayer = null // 标注图层
-let routeLayer = null // 路线图层
-const routeInfo = ref('') // 距离/时长信息
+const keyword = ref('gym')
+const radius = ref(2000)
+const results = ref([])
+const routeInfo = ref('')
+
+let meMarker = null
+let poiMarkers = []
+const ROUTE_SOURCE_ID = 'route-src'
+const ROUTE_LAYER_ID = 'route-layer'
 
 // 初始化地图
 onMounted(() => {
-  map.value = L.map(mapEl.value).setView([-37.8136, 144.9631], 13) // 初始给墨尔本 CBD
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
-  }).addTo(map.value)
+  mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
+  map.value = new mapboxgl.Map({
+    container: mapEl.value,
+    style: 'mapbox://styles/mapbox/streets-v12',
+    center: [144.9631, -37.8136], // Melbourne
+    zoom: 12,
+    attributionControl: true,
+    cooperativeGestures: true,
+    pitchWithRotate: false,
+  })
 
-  markersLayer = L.layerGroup().addTo(map.value)
+  map.value.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
 })
 
-// 获取当前位置
+onBeforeUnmount(() => {
+  clearRoute()
+  clearPoiMarkers()
+  if (meMarker) meMarker.remove()
+  if (map.value) map.value.remove()
+})
+
+function clearPoiMarkers() {
+  poiMarkers.forEach((m) => m.remove())
+  poiMarkers = []
+}
+
+function fitToBoundsLngLatPairs(pairs) {
+  if (!pairs.length) return
+  const b = new mapboxgl.LngLatBounds(pairs[0], pairs[0])
+  for (let i = 1; i < pairs.length; i++) b.extend(pairs[i])
+
+  map.value.fitBounds(b, { padding: 60, duration: 0 })
+}
+
 async function locateMe() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(null)
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        me.value = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-        // 在图上放标记
-        markersLayer.clearLayers()
-        L.marker([me.value.lat, me.value.lon])
-          .addTo(markersLayer)
-          .bindPopup('You are here')
-          .openPopup()
-        map.value.setView([me.value.lat, me.value.lon], 14)
-        resolve(me.value)
-      },
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000 },
-    )
-  })
+  try {
+    if (!navigator.geolocation) throw new Error('Geolocation not supported')
+    const pos = await new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 8000,
+      })
+    })
+    me.value = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+
+    const lngLat = [me.value.lon, me.value.lat]
+    if (!meMarker) {
+      meMarker = new mapboxgl.Marker({ color: '#3b82f6' })
+        .setLngLat(lngLat)
+        .setPopup(new mapboxgl.Popup({ offset: 12 }).setText('You are here'))
+        .addTo(map.value)
+    } else {
+      meMarker.setLngLat(lngLat)
+    }
+
+    map.value.easeTo({ center: lngLat, zoom: 14, duration: 0 })
+  } catch (e) {
+    console.warn(e)
+    alert('Unable to get your location. Please allow location access.')
+  }
 }
 
-// 搜索附近
 async function runSearch() {
-  routeClear()
-  if (!me.value) await locateMe()
-  if (!me.value) return
-  const list = await searchPlaces(keyword.value || 'park', me.value, Number(radius.value) || 2000)
-  results.value = list
-  // 打点
-  markersLayer.clearLayers()
-  L.marker([me.value.lat, me.value.lon]).addTo(markersLayer).bindPopup('You are here')
-  list.forEach((p) => {
-    const mk = L.marker([p.lat, p.lon]).addTo(markersLayer)
-    mk.bindPopup(p.name)
-  })
-  if (list.length) {
-    const group = L.featureGroup(list.map((p) => L.marker([p.lat, p.lon])))
-    map.value.fitBounds(group.getBounds().pad(0.3))
+  try {
+    clearRoute()
+    if (!me.value) await locateMe()
+    if (!me.value) return
+
+    const list = await searchPlaces(keyword.value || 'park', me.value, Number(radius.value) || 2000)
+    results.value = list
+
+    clearPoiMarkers()
+
+    if (me.value) {
+      const lngLat = [me.value.lon, me.value.lat]
+      if (!meMarker) {
+        meMarker = new mapboxgl.Marker({ color: '#3b82f6' })
+          .setLngLat(lngLat)
+          .setPopup(new mapboxgl.Popup({ offset: 12 }).setText('You are here'))
+          .addTo(map.value)
+      } else {
+        meMarker.setLngLat(lngLat)
+      }
+    }
+
+    const boundsPairs = []
+    list.forEach((p) => {
+      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return
+      const m = new mapboxgl.Marker()
+        .setLngLat([p.lon, p.lat])
+        .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(p.name || ''))
+        .addTo(map.value)
+      poiMarkers.push(m)
+      boundsPairs.push([p.lon, p.lat])
+    })
+
+    if (boundsPairs.length) {
+      fitToBoundsLngLatPairs(boundsPairs.concat([[me.value.lon, me.value.lat]]))
+    } else {
+      alert('No matching places found nearby.')
+    }
+  } catch (err) {
+    console.error(err)
+    alert('Search failed. Please try again later.')
   }
 }
 
-// 绘制路线
 async function drawRoute(toPlace) {
-  if (!me.value) await locateMe()
-  if (!me.value) return
+  try {
+    if (!me.value) await locateMe()
+    if (!me.value) return
+    const r = await footRoute(me.value, { lat: toPlace.lat, lon: toPlace.lon })
 
-  const r = await footRoute(me.value, { lat: toPlace.lat, lon: toPlace.lon })
-  routeClear()
-  routeLayer = L.polyline(r.coordinates, { color: 'blue', weight: 5, opacity: 0.7 }).addTo(
-    map.value,
-  )
-  map.value.fitBounds(routeLayer.getBounds().pad(0.3))
-  const km = (r.distance / 1000).toFixed(2)
-  const min = Math.round(r.duration / 60)
-  routeInfo.value = `Route: ${km} km · ~${min} min on foot`
+    const lineCoords = r.coordinates.map(([lat, lon]) => [lon, lat])
+
+    if (map.value.getSource(ROUTE_SOURCE_ID)) {
+      map.value.getSource(ROUTE_SOURCE_ID).setData({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: lineCoords },
+        properties: {},
+      })
+    } else {
+      map.value.addSource(ROUTE_SOURCE_ID, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: lineCoords },
+          properties: {},
+        },
+      })
+      map.value.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: 'line',
+        source: ROUTE_SOURCE_ID,
+        paint: {
+          'line-color': '#1d4ed8',
+          'line-width': 5,
+          'line-opacity': 0.7,
+        },
+      })
+    }
+
+    fitToBoundsLngLatPairs(lineCoords)
+
+    const km = (r.distance / 1000).toFixed(2)
+    const min = Math.round(r.duration / 60)
+    routeInfo.value = `Route: ${km} km · ~${min} min on foot`
+  } catch (e) {
+    console.error(e)
+    alert('Failed to draw route.')
+  }
 }
 
-function routeClear() {
+function clearRoute() {
   routeInfo.value = ''
-  if (routeLayer) {
-    map.value.removeLayer(routeLayer)
-    routeLayer = null
-  }
+  if (map.value?.getLayer(ROUTE_LAYER_ID)) map.value.removeLayer(ROUTE_LAYER_ID)
+  if (map.value?.getSource(ROUTE_SOURCE_ID)) map.value.removeSource(ROUTE_SOURCE_ID)
 }
 </script>
 
 <template>
   <div class="container mt-4">
     <h2 class="mb-3">Healthy Map</h2>
+
     <div class="alert alert-info" role="region" aria-label="How to use Healthy Map">
       <strong>What this page does:</strong> Find nearby health-related places and draw a walking
       route.
@@ -119,18 +195,13 @@ function routeClear() {
           Enter a keyword (e.g., <code>gym</code>, <code>park</code>, <code>clinic</code>,
           <code>supermarket</code>) and a radius, then click <em>Go</em>.
         </li>
-        <li>
-          In the results list, click <em>Route</em> to draw a walking route from your position to
-          that place. Distance and time will show on the right of the toolbar.
-        </li>
+        <li>Click <em>Route</em> to draw a walking route from your position to that place.</li>
       </ol>
       <small class="text-muted d-block mt-2">
-        Tip: you can link to this page with a preset keyword, e.g. <code>/map?kw=supermarket</code>
-        (we"ll wire shortcuts from Programs/Tracker later).
+        Tip: You can link to this page with preset keyword, e.g. <code>/map?kw=supermarket</code>.
       </small>
     </div>
 
-    <!-- control panel -->
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
       <button class="btn btn-outline-primary" @click="locateMe">Locate me</button>
 
@@ -147,7 +218,6 @@ function routeClear() {
       }}</span>
     </div>
 
-    <!-- map -->
     <div
       ref="mapEl"
       role="application"
@@ -156,6 +226,7 @@ function routeClear() {
     ></div>
 
     <!-- List of results -->
+
     <div class="mt-3" v-if="results.length">
       <h5 id="results-title">Results ({{ results.length }})</h5>
       <ul class="list-group" aria-labelledby="results-title">

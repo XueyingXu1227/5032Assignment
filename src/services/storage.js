@@ -1,4 +1,4 @@
-import { db } from '@/Firebase/init'
+import { db } from '@/firebase/init'
 import { doc, setDoc, getDoc, getDocs, collection, serverTimestamp } from 'firebase/firestore'
 
 const PREFIX = 'fit5032_'
