@@ -19,6 +19,14 @@ onMounted(async () => {
 <template>
   <div class="container mt-5">
     <h1>Healthy Recipes</h1>
+    <div class="alert alert-info mb-3" role="region" aria-label="How to use recipes">
+      <strong>Explore & rate healthy recipes</strong>
+      <ul class="mb-0 mt-2">
+        <li>Browse the recipes below and click the stars to rate.</li>
+        <li>Hit <em>Submit</em> to save your rating and update the average score.</li>
+        <li>We’ll use your ratings to surface better suggestions next time.</li>
+      </ul>
+    </div>
     <div v-for="recipe in recipes" :key="recipe.id" class="card p-3 mb-3">
       <h4>{{ recipe.name }}</h4>
       <p>{{ recipe.description }}</p>

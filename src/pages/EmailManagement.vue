@@ -1,10 +1,4 @@
 <script setup>
-// Admin · Bulk Email (English UI)
-// - Send to REGISTERED users only (from Firestore `users` collection)
-// - Recipient picker: searchable dropdown + multi-select + Select all / Clear all
-// - Message: plain text (converted to simple HTML with <br>)
-// - Attachments: local files → base64 (no Storage)
-
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { sendBulkEmail } from '@/services/email'
 import { db } from '@/firebase/init'

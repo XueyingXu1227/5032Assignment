@@ -25,12 +25,6 @@ const openResource = async (item) => {
   if (item.url) window.open(item.url, '_blank', 'noopener')
 }
 
-// — About —
-const aboutParas = [
-  '"Sub-health" refers to a state between health and illness, with common manifestations including fatigue, poor sleep quality, reduced immunity and mood swings.',
-  'The bottom half of this page provides a searchable, sortable, paginated list of learning resources (articles/videos, etc.) to help you quickly locate what you need.',
-]
-
 // Form Selection
 const selectedIds = ref([])
 
@@ -127,6 +121,22 @@ function onExportPDF() {
     <!-- About -->
     <section aria-labelledby="about-title" class="mb-4">
       <h1 id="about-title" class="mb-3">About Sub-health</h1>
+      <div class="alert alert-info mb-3" role="region" aria-label="Learn about sub-health">
+        <strong>Learn and practice</strong>
+        <p class="mt-2">
+          "Sub-health" refers to a state between health and illness, with common signs like fatigue,
+          poor sleep quality, reduced immunity and mood swings.
+        </p>
+        <p>
+          This page provides a searchable, sortable list of learning resources (articles and videos)
+          to help you improve your well-being.
+        </p>
+        <ul class="mb-0">
+          <li>Browse curated articles and videos on nutrition, sleep, and exercise.</li>
+          <li>Use the filters above to quickly find what you need.</li>
+          <li>Click <em>Open</em> to view a resource (it opens in a new tab).</li>
+        </ul>
+      </div>
       <p v-for="(t, i) in aboutParas" :key="i">{{ t }}</p>
     </section>
 

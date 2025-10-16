@@ -2,6 +2,7 @@ import Home from '../pages/Home.vue'
 import Signup from '../pages/Signup.vue'
 import Programs from '../pages/Programs.vue'
 import Quiz from '../pages/Quiz.vue'
+import QuizDemo from '@/pages/QuizDemo.vue'
 import Tracker from '../pages/Tracker.vue'
 import Learn from '../pages/Learn.vue'
 import Login from '../pages/Login.vue'
@@ -17,6 +18,7 @@ const routes = [
   { path: '/signup', name: 'Signup', component: Signup },
   { path: '/programs', component: Programs },
   { path: '/quiz', name: 'Quiz', component: Quiz },
+  { path: '/quiz-demo', name: 'QuizDemo', component: QuizDemo },
   { path: '/tracker', name: 'Tracker', component: Tracker },
   { path: '/login', name: 'Login', component: Login },
   { path: '/emailmanagement', component: EmailManagement, meta: { requiresAdmin: true } },

@@ -59,4 +59,18 @@ const { isOnline } = useOnline()
   padding: 0;
   margin: 0;
 }
+
+.btn-outline-primary {
+  color: #004085 !important;
+  border-color: #004085 !important;
+}
+.btn-outline-primary:hover {
+  background-color: #004085 !important;
+  color: #fff !important;
+}
+
+.alert-info {
+  background-color: #d1ecf1 !important;
+  color: #084c61 !important;
+}
 </style>

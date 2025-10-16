@@ -2,252 +2,282 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { searchPlaces, footRoute } from '@/services/map'
+import { loopFootRoute, humanKM, humanMin } from '@/services/map'
 
-// UI status
 const map = ref(null)
 const mapEl = ref(null)
-const me = ref(null) // {lat, lon}
-const keyword = ref('gym')
-const radius = ref(2000)
-const results = ref([])
+
+const me = ref(null)
 const routeInfo = ref('')
-
+const directions = ref([])
 let meMarker = null
-let poiMarkers = []
-const ROUTE_SOURCE_ID = 'route-src'
-const ROUTE_LAYER_ID = 'route-layer'
 
-// 初始化地图
+const candidates = ref([])
+let routeSourceId = 'route-src'
+let routeLayerId = 'route-layer'
+
+const pace = ref('walk')
+const customSpeed = ref(6)
+const minutes = ref(20)
+
+const SPEEDS = {
+  walk: 4,
+  brisk: 5.5,
+  jog: 8,
+}
+
 onMounted(() => {
   mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
   map.value = new mapboxgl.Map({
     container: mapEl.value,
     style: 'mapbox://styles/mapbox/streets-v12',
-    center: [144.9631, -37.8136], // Melbourne
+    center: [144.9631, -37.8136],
     zoom: 12,
     attributionControl: true,
     cooperativeGestures: true,
     pitchWithRotate: false,
   })
-
   map.value.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
 })
 
 onBeforeUnmount(() => {
   clearRoute()
-  clearPoiMarkers()
   if (meMarker) meMarker.remove()
   if (map.value) map.value.remove()
 })
 
-function clearPoiMarkers() {
-  poiMarkers.forEach((m) => m.remove())
-  poiMarkers = []
+async function locateMe() {
+  if (!navigator.geolocation) throw new Error('Geolocation not supported')
+  const pos = await new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 8000,
+    })
+  })
+  me.value = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+  const ll = [me.value.lon, me.value.lat]
+  if (!meMarker) {
+    meMarker = new mapboxgl.Marker({ color: '#3b82f6' })
+      .setLngLat(ll)
+      .setPopup(new mapboxgl.Popup({ offset: 12 }).setText('You are here'))
+      .addTo(map.value)
+  } else {
+    meMarker.setLngLat(ll)
+  }
+  map.value.easeTo({ center: ll, zoom: 14, duration: 0 })
 }
 
 function fitToBoundsLngLatPairs(pairs) {
   if (!pairs.length) return
   const b = new mapboxgl.LngLatBounds(pairs[0], pairs[0])
   for (let i = 1; i < pairs.length; i++) b.extend(pairs[i])
-
   map.value.fitBounds(b, { padding: 60, duration: 0 })
 }
 
-async function locateMe() {
-  try {
-    if (!navigator.geolocation) throw new Error('Geolocation not supported')
-    const pos = await new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 8000,
-      })
-    })
-    me.value = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-
-    const lngLat = [me.value.lon, me.value.lat]
-    if (!meMarker) {
-      meMarker = new mapboxgl.Marker({ color: '#3b82f6' })
-        .setLngLat(lngLat)
-        .setPopup(new mapboxgl.Popup({ offset: 12 }).setText('You are here'))
-        .addTo(map.value)
-    } else {
-      meMarker.setLngLat(lngLat)
-    }
-
-    map.value.easeTo({ center: lngLat, zoom: 14, duration: 0 })
-  } catch (e) {
-    console.warn(e)
-    alert('Unable to get your location. Please allow location access.')
-  }
+function clearRoute() {
+  routeInfo.value = ''
+  directions.value = []
+  if (map.value?.getLayer(routeLayerId)) map.value.removeLayer(routeLayerId)
+  if (map.value?.getSource(routeSourceId)) map.value.removeSource(routeSourceId)
 }
 
-async function runSearch() {
+function destByBearing(center, distanceMeters, bearingDeg) {
+  const theta = (bearingDeg * Math.PI) / 180
+  const dNorth = Math.cos(theta) * distanceMeters
+  const dEast = Math.sin(theta) * distanceMeters
+  const dLat = dNorth / 111320
+  const dLon = dEast / (111320 * Math.cos((center.lat * Math.PI) / 180))
+  return { lat: center.lat + dLat, lon: center.lon + dLon }
+}
+
+async function recommendRoutes() {
   try {
     clearRoute()
     if (!me.value) await locateMe()
     if (!me.value) return
 
-    const list = await searchPlaces(keyword.value || 'park', me.value, Number(radius.value) || 2000)
-    results.value = list
+    const speedKmh = (pace.value === 'custom' ? Number(customSpeed.value) : SPEEDS[pace.value]) || 5
+    const targetSec = Number(minutes.value) * 60
+    const speedMps = (speedKmh * 1000) / 3600
+    const oneWayMeters = (speedMps * targetSec) / 2
 
-    clearPoiMarkers()
+    const headings = [20, 140, 260]
+    const results = []
 
-    if (me.value) {
-      const lngLat = [me.value.lon, me.value.lat]
-      if (!meMarker) {
-        meMarker = new mapboxgl.Marker({ color: '#3b82f6' })
-          .setLngLat(lngLat)
-          .setPopup(new mapboxgl.Popup({ offset: 12 }).setText('You are here'))
-          .addTo(map.value)
-      } else {
-        meMarker.setLngLat(lngLat)
-      }
-    }
+    for (const h of headings) {
+      const to = destByBearing(me.value, oneWayMeters, h)
 
-    const boundsPairs = []
-    list.forEach((p) => {
-      if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) return
-      const m = new mapboxgl.Marker()
-        .setLngLat([p.lon, p.lat])
-        .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(p.name || ''))
-        .addTo(map.value)
-      poiMarkers.push(m)
-      boundsPairs.push([p.lon, p.lat])
-    })
+      const r = await loopFootRoute(me.value, to)
 
-    if (boundsPairs.length) {
-      fitToBoundsLngLatPairs(boundsPairs.concat([[me.value.lon, me.value.lat]]))
-    } else {
-      alert('No matching places found nearby.')
-    }
-  } catch (err) {
-    console.error(err)
-    alert('Search failed. Please try again later.')
-  }
-}
-
-async function drawRoute(toPlace) {
-  try {
-    if (!me.value) await locateMe()
-    if (!me.value) return
-    const r = await footRoute(me.value, { lat: toPlace.lat, lon: toPlace.lon })
-
-    const lineCoords = r.coordinates.map(([lat, lon]) => [lon, lat])
-
-    if (map.value.getSource(ROUTE_SOURCE_ID)) {
-      map.value.getSource(ROUTE_SOURCE_ID).setData({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: lineCoords },
-        properties: {},
-      })
-    } else {
-      map.value.addSource(ROUTE_SOURCE_ID, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: lineCoords },
-          properties: {},
-        },
-      })
-      map.value.addLayer({
-        id: ROUTE_LAYER_ID,
-        type: 'line',
-        source: ROUTE_SOURCE_ID,
-        paint: {
-          'line-color': '#1d4ed8',
-          'line-width': 5,
-          'line-opacity': 0.7,
-        },
+      const lineLngLat = r.coordinates.map(([lat, lon]) => [lon, lat])
+      results.push({
+        id: `h${h}`,
+        heading: h,
+        to,
+        distance: r.distance,
+        duration: r.duration,
+        steps: r.steps,
+        line: lineLngLat,
       })
     }
 
-    fitToBoundsLngLatPairs(lineCoords)
+    results.sort((a, b) => Math.abs(a.duration - targetSec) - Math.abs(b.duration - targetSec))
+    candidates.value = results
 
-    const km = (r.distance / 1000).toFixed(2)
-    const min = Math.round(r.duration / 60)
-    routeInfo.value = `Route: ${km} km · ~${min} min on foot`
+    if (candidates.value.length) selectRoute(candidates.value[0].id)
   } catch (e) {
     console.error(e)
-    alert('Failed to draw route.')
+    alert('Failed to generate routes. Try a different time or pace.')
   }
 }
 
-function clearRoute() {
-  routeInfo.value = ''
-  if (map.value?.getLayer(ROUTE_LAYER_ID)) map.value.removeLayer(ROUTE_LAYER_ID)
-  if (map.value?.getSource(ROUTE_SOURCE_ID)) map.value.removeSource(ROUTE_SOURCE_ID)
+function selectRoute(id) {
+  const item = candidates.value.find((x) => x.id === id)
+  if (!item) return
+
+  if (map.value.getSource(routeSourceId)) {
+    map.value.getSource(routeSourceId).setData({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: item.line },
+      properties: {},
+    })
+  } else {
+    map.value.addSource(routeSourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: item.line },
+        properties: {},
+      },
+    })
+    map.value.addLayer({
+      id: routeLayerId,
+      type: 'line',
+      source: routeSourceId,
+      paint: { 'line-color': '#1d4ed8', 'line-width': 5, 'line-opacity': 0.7 },
+    })
+  }
+  fitToBoundsLngLatPairs(item.line)
+  routeInfo.value = `~${humanKM(item.distance)} km · ${humanMin(item.duration)} min`
+
+  directions.value = item.steps.map((s, i) => ({
+    idx: i + 1,
+    text: `${s.type}${s.modifier ? ' ' + s.modifier : ''}${s.name ? ' on ' + s.name : ''}`.trim(),
+    distance: Math.round(s.distance),
+  }))
+}
+
+function clearCandidates() {
+  candidates.value = []
+  clearRoute()
 }
 </script>
 
 <template>
   <div class="container mt-4">
-    <h2 class="mb-3">Healthy Map</h2>
+    <h2 class="mb-3">Healthy Route Recommender</h2>
 
-    <div class="alert alert-info" role="region" aria-label="How to use Healthy Map">
-      <strong>What this page does:</strong> Find nearby health-related places and draw a walking
-      route.
-      <ol class="mb-0 mt-2">
-        <li>
-          Click <em>Locate me</em> to set your current position (allow location in your browser).
-        </li>
-        <li>
-          Enter a keyword (e.g., <code>gym</code>, <code>park</code>, <code>clinic</code>,
-          <code>supermarket</code>) and a radius, then click <em>Go</em>.
-        </li>
-        <li>Click <em>Route</em> to draw a walking route from your position to that place.</li>
-      </ol>
+    <div class="alert alert-info mb-3" role="region" aria-label="How this works">
+      <strong>Plan a workout route</strong>
+      <ul class="mb-0 mt-2">
+        <li>Choose your pace and time.</li>
+        <li>Tap <em>Recommend</em> to get routes that start and end at your location.</li>
+        <li>Select a route to view the line and step-by-step guidance.</li>
+      </ul>
       <small class="text-muted d-block mt-2">
-        Tip: You can link to this page with preset keyword, e.g. <code>/map?kw=supermarket</code>.
+        Map data © OpenStreetMap contributors • Rendering by Mapbox GL • Routing by OSRM.
       </small>
     </div>
 
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <button class="btn btn-outline-primary" @click="locateMe">Locate me</button>
-
-      <div class="input-group" style="max-width: 520px">
-        <span class="input-group-text">Search</span>
-        <input class="form-control" v-model="keyword" placeholder="e.g., gym / park / clinic" />
-        <span class="input-group-text">Radius(m)</span>
-        <input class="form-control" type="number" v-model.number="radius" min="200" step="100" />
-        <button class="btn btn-primary" @click="runSearch">Go</button>
+    <div class="controls row g-2 align-items-center mb-3">
+      <div class="col-auto">
+        <button class="btn btn-outline-primary" @click="locateMe">Locate me</button>
       </div>
 
-      <span class="badge bg-secondary ms-auto" v-if="routeInfo" aria-live="polite">{{
-        routeInfo
-      }}</span>
+      <div class="col-auto">
+        <label class="form-label me-2 mb-0">Pace</label>
+        <select class="form-select d-inline-block" style="width: auto" v-model="pace">
+          <option value="walk">Walk (~4 km/h)</option>
+          <option value="brisk">Brisk (~5.5 km/h)</option>
+          <option value="jog">Jog (~8 km/h)</option>
+          <option value="custom">Custom</option>
+        </select>
+        <input
+          v-if="pace === 'custom'"
+          class="form-control d-inline-block ms-2"
+          type="number"
+          min="3"
+          step="0.5"
+          v-model.number="customSpeed"
+          placeholder="km/h"
+          style="width: 100px"
+        />
+      </div>
+
+      <div class="col-auto">
+        <label class="form-label me-2 mb-0">Time</label>
+        <select class="form-select d-inline-block" style="width: auto" v-model.number="minutes">
+          <option :value="10">10 min</option>
+          <option :value="20">20 min</option>
+          <option :value="30">30 min</option>
+        </select>
+      </div>
+
+      <div class="col-auto">
+        <button class="btn btn-primary" @click="recommendRoutes">Recommend</button>
+      </div>
+
+      <div class="col-auto">
+        <button class="btn btn-outline-secondary" @click="clearCandidates">Clear</button>
+      </div>
+
+      <div class="col-auto ms-auto" v-if="routeInfo">
+        <span class="badge bg-secondary">{{ routeInfo }}</span>
+      </div>
     </div>
 
     <div
       ref="mapEl"
       role="application"
-      aria-label="Health map. Use arrow keys to pan and plus/minus to zoom."
-      style="height: 420px; width: 100%; border-radius: 8px; border: 1px solid #eee"
+      aria-label="Workout routes map"
+      style="height: 460px; width: 100%; border-radius: 8px; border: 1px solid #eee"
     ></div>
 
-    <!-- List of results -->
-
-    <div class="mt-3" v-if="results.length">
-      <h5 id="results-title">Results ({{ results.length }})</h5>
-      <ul class="list-group" aria-labelledby="results-title">
-        <li
-          v-for="p in results"
-          :key="p.id"
-          class="list-group-item d-flex justify-content-between align-items-center"
-        >
-          <span class="me-2" style="max-width: 70%">{{ p.name }}</span>
-          <div class="btn-group">
-            <button class="btn btn-sm btn-outline-secondary" @click="drawRoute(p)">Route</button>
-            <a
-              class="btn btn-sm btn-outline-secondary"
-              :href="`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`"
-              target="_blank"
-              rel="noopener"
-              >OSM</a
-            >
+    <div class="mt-3" v-if="candidates.length">
+      <h5 class="mb-2">Suggested routes (out-and-back)</h5>
+      <div class="row g-3">
+        <div class="col-12 col-md-4" v-for="c in candidates" :key="c.id">
+          <div class="card h-100 shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <strong>Heading {{ c.heading }}°</strong>
+                <span class="badge bg-primary"
+                  >~{{ (c.distance / 1000).toFixed(2) }} km ·
+                  {{ Math.round(c.duration / 60) }} min</span
+                >
+              </div>
+              <p class="text-muted mb-2">Out-and-back route from your location.</p>
+              <button class="btn btn-outline-primary w-100" @click="selectRoute(c.id)">
+                Select
+              </button>
+            </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-4" v-if="directions.length">
+      <h5 class="mb-2">Turn-by-turn directions</h5>
+      <ol class="list-group list-group-numbered">
+        <li
+          v-for="d in directions"
+          :key="d.idx"
+          class="list-group-item d-flex justify-content-between"
+        >
+          <span>{{ d.text || 'Continue' }}</span>
+          <span class="text-muted">{{ d.distance }} m</span>
         </li>
-      </ul>
+      </ol>
     </div>
   </div>
 </template>

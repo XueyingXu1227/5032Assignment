@@ -231,6 +231,18 @@ onMounted(load)
 <template>
   <div class="container mt-5">
     <h1 class="mb-3">Habit Tracker</h1>
+    <div class="alert alert-info mb-3" role="region" aria-label="How to use habit tracker">
+      <strong>Log your daily activity</strong>
+      <ul class="mb-0 mt-2">
+        <li>
+          Pick a date, choose a type (e.g., Walk/Run) and enter minutes, then click <em>Add</em>.
+        </li>
+        <li>
+          Use the range filters to see totals in a time window. You can sort or export your data.
+        </li>
+        <li>Tip: keep entries short and consistent—small steps add up.</li>
+      </ul>
+    </div>
 
     <!-- input -->
     <div class="card mb-3 p-3">
