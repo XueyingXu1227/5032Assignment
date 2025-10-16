@@ -4,9 +4,11 @@ import { exportCSV, exportPDF } from '@/services/export'
 
 const LS_KEY = 'quizAttempts'
 
+const todayStr = new Date().toISOString().slice(0, 10)
+
 // form
 const form = ref({
-  date: new Date().toISOString().slice(0, 10),
+  date: todayStr,
   score: 7,
   total: 10,
   note: '',
@@ -25,6 +27,13 @@ function save() {
 function addAttempt() {
   const s = Number(form.value.score)
   const t = Number(form.value.total)
+
+  //  不允许未来日期
+  if (new Date(form.value.date) > new Date(todayStr)) {
+    alert('Date cannot be in the future.')
+    return
+  }
+
   if (!t || s < 0 || s > t) return
   attempts.value.push({
     id: crypto.randomUUID(),
@@ -43,7 +52,7 @@ const avgPercent = computed(() => {
 })
 
 // ---- export ----
-const selectedIds = ref([]) // ✅ 用这个，不是 selectedRows
+const selectedIds = ref([])
 const exportHeaders = ['Date', 'Score', 'Total', 'Percent', 'Note']
 const exportRows = computed(() => {
   const src = selectedIds.value.length
@@ -86,7 +95,14 @@ onMounted(load)
         <div class="row mb-3">
           <div class="col-md-3">
             <label for="dateInput" class="form-label">Date</label>
-            <input id="dateInput" type="date" v-model="form.date" class="form-control" />
+            <!-- 限制最大可选日期为今天 -->
+            <input
+              id="dateInput"
+              type="date"
+              v-model="form.date"
+              class="form-control"
+              :max="todayStr"
+            />
           </div>
           <div class="col-md-2">
             <label for="scoreInput" class="form-label">Score</label>
@@ -157,9 +173,9 @@ onMounted(load)
               :value="a.id"
               v-model="selectedIds"
             />
-            <label class="visually-hidden" :for="`select-${a.id || idx}`">
-              Select row {{ idx + 1 }}
-            </label>
+            <label class="visually-hidden" :for="`select-${a.id || idx}`"
+              >Select row {{ idx + 1 }}</label
+            >
           </td>
           <td>{{ a.date }}</td>
           <td>{{ a.score }}</td>
@@ -167,7 +183,6 @@ onMounted(load)
           <td>{{ a.percent }}%</td>
           <td>{{ a.note }}</td>
         </tr>
-
         <tr v-if="attempts.length === 0">
           <td colspan="6" class="text-center text-muted">No results yet.</td>
         </tr>
