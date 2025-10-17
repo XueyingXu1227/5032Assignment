@@ -5,24 +5,23 @@ const functions = require('firebase-functions')
 const sgMail = require('@sendgrid/mail')
 const cors = require('cors')({ origin: true })
 
+/* init Admin SDK (reuse app if already initialized) */
 const admin = require('firebase-admin')
 try {
   admin.app()
 } catch {
-  admin
-    .initializeApp
-    //{storageBucket: 'fit5032assessment-xu.appspot.com',}
-    ()
+  admin.initializeApp()
 }
 const db = admin.firestore()
-//const storage = admin.storage()
 
+/*  set default region for all HTTP functions */
 setGlobalOptions({ region: 'us-central1' })
 
-// Secrets
+/*secrets for SendGrid key and From email */
 const SENDGRID_API_KEY = defineSecret('SENDGRID_API_KEY')
 const FROM_EMAIL = defineSecret('FROM_EMAIL')
 
+/* verify Firebase ID token and read user's role */
 async function getUserAndRole(req) {
   const auth = req.headers.authorization || ''
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
@@ -39,6 +38,7 @@ async function getUserAndRole(req) {
   return { uid: decoded.uid, role }
 }
 
+/* load files from Cloud Storage and encode as base64 */
 async function fetchStorageAttachments(items = []) {
   if (!items || items.length === 0) return []
   const bucket = admin.storage().bucket()
@@ -58,6 +58,7 @@ async function fetchStorageAttachments(items = []) {
   return out
 }
 
+/*send one email via SendGrid (CORS, POST only) */
 exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (req, res) => {
   cors(req, res, async () => {
     try {
@@ -69,12 +70,14 @@ exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (re
 
       sgMail.setApiKey(SENDGRID_API_KEY.value())
 
+      // base64 attachments from client
       const atts = (attachments || []).map((a) => ({
         filename: a.filename,
         type: a.type || 'application/octet-stream',
         content: a.content, // base64
         disposition: 'attachment',
       }))
+      // attachments fetched from Cloud Storage
       const storageAtts = await fetchStorageAttachments(storageAttachments || [])
 
       await sgMail.send({
@@ -94,11 +97,13 @@ exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (re
   })
 })
 
+/*admin-only mass send with basic job tracking */
 exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (req, res) => {
   cors(req, res, async () => {
     try {
       if (req.method !== 'POST') return res.status(405).json({ error: 'Only POST allowed' })
 
+      /* only admin can bulk send */
       const { uid, role } = await getUserAndRole(req)
       if (!uid || role !== 'admin')
         return res.status(403).json({ error: 'Only admin can bulk send' })
@@ -114,6 +119,8 @@ exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async
       if (!subject || !html) return res.status(400).json({ error: 'Missing subject/html' })
 
       sgMail.setApiKey(SENDGRID_API_KEY.value())
+
+      // prepare attachments (client base64 + Cloud Storage)
       const storageAtts = await fetchStorageAttachments(storageAttachments || [])
       const base64Atts = (attachments || []).map((a) => ({
         filename: a.filename,
@@ -123,6 +130,7 @@ exports.bulkEmail = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async
       }))
       const atts = [...base64Atts, ...storageAtts]
 
+      /* create a simple job doc for progress */
       const docs = await db.getAll(...userIds.map((id) => db.collection('users').doc(id)))
       const emails = docs.map((d) => (d.exists ? d.data().email : null)).filter((e) => !!e)
 

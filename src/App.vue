@@ -8,27 +8,32 @@ const { isOnline } = useOnline()
 
 <!-- src/App.vue -->
 <template>
-  <!-- Skip link: Tab  -->
+  <!-- skip link lets keyboard users jump to main content -->
+  <!-- Tip：press Tab then Enter to activate -->
   <a href="#main" class="skip-link">Skip to main content</a>
 
+  <!--global header with primary navigation -->
   <header>
     <nav aria-label="Main">
       <Navbar />
     </nav>
   </header>
 
-  <!-- main content -->
+  <!-- main landmark with programmatic focus target -->
+  <!-- RouterView renders the current page -->
   <main id="main" tabindex="-1">
     <RouterView />
   </main>
 
-  <!-- Screen readers for broadcasting -->
+  <!--polite live region for screen reader updates -->
   <div id="sr-updates" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
 
+  <!--  global footer shown on all pages -->
   <Footer />
 </template>
 
 <style>
+/*show skip link only when focused */
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -43,11 +48,13 @@ const { isOnline } = useOnline()
   z-index: 10000;
 }
 
+/*clear focus indicator for keyboard users */
 :focus-visible {
   outline: 3px solid #0d6efd;
   outline-offset: 2px;
 }
 
+/* utility class to visually hide but keep for SR */
 .visually-hidden {
   position: absolute !important;
   height: 1px;
@@ -60,6 +67,7 @@ const { isOnline } = useOnline()
   margin: 0;
 }
 
+/* small override to button outline primary */
 .btn-outline-primary {
   color: #004085 !important;
   border-color: #004085 !important;
@@ -69,6 +77,7 @@ const { isOnline } = useOnline()
   color: #fff !important;
 }
 
+/*soft info alert colors for better contrast */
 .alert-info {
   background-color: #d1ecf1 !important;
   color: #084c61 !important;

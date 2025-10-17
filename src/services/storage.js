@@ -12,8 +12,9 @@ import {
   orderBy,
 } from 'firebase/firestore'
 import { enqueue } from '@/services/offlineQueue'
-// —— 本地 habit 缓存工具 ——
-// 说明：每个用户一个 key：habits_<uid>
+
+/* Offline-first cache : local helpers for habits/quiz per user */
+// local habit cache: key = habits_<uid>
 function upsertLocalHabit(uid, item) {
   const key = `habits_${uid}`
   const list = getLS(key, []) || []
@@ -35,11 +36,10 @@ function upsertLocalQuiz(uid, item) {
   setLS(key, list)
   return list
 }
-
 function readLocalQuiz(uid) {
   return getLS(`quiz_${uid}`, []) || []
 }
-//按 id 删除本地 quiz 条目（用于把“临时”换成“正式”）
+/* Replace temp quiz with confirmed one (by id) */
 function removeLocalQuizById(uid, id) {
   const key = `quiz_${uid}`
   const list = getLS(key, []) || []
@@ -48,8 +48,8 @@ function removeLocalQuizById(uid, id) {
   return next
 }
 
-// —— 读取：本地优先，在线时再合并云端 ——
-// 调用：getHabitEntries({from,to}, uid)
+/* local-first; merge cloud when online */
+// use: getHabitEntries({from,to}, uid)
 async function getHabitEntries({ from, to }, uid) {
   const local = readLocalHabits(uid)
     .filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
@@ -66,6 +66,7 @@ async function getHabitEntries({ from, to }, uid) {
       )
       const snap = await getDocs(q)
       const cloud = snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: false }))
+      //merge cloud over local by id
       const mergedMap = new Map()
       ;[...cloud, ...local].forEach((item) => mergedMap.set(item.id, item))
       const merged = Array.from(mergedMap.values()).sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -78,11 +79,11 @@ async function getHabitEntries({ from, to }, uid) {
   return local
 }
 
-// —— 新增：先本地立即可见，再写云或入队 ——
-// 调用：addHabitEntry(entry, uid)
+/* show instantly (pending when offline), sync later */
+// use: addHabitEntry(entry, uid)
 async function addHabitEntry(entry, uid) {
   const item = {
-    id: crypto.randomUUID(), // 本地临时 id
+    id: crypto.randomUUID(), // local temp id
     date: entry.date,
     type: entry.type,
     minutes: Number(entry.minutes) || 0,
@@ -106,6 +107,7 @@ async function addHabitEntry(entry, uid) {
       item.pending = false
       upsertLocalHabit(uid, item)
     } catch {
+      // BR (F.1): queue for later sync
       enqueue('habit_sync', { uid, item })
     }
   } else {
@@ -114,8 +116,8 @@ async function addHabitEntry(entry, uid) {
   return item
 }
 
-// —— 队列任务的执行器：把 pending 写上云端 ——
-// 调用：syncHabitTask({ uid, item })
+/* write pending habit to cloud */
+// use: syncHabitTask({ uid, item })
 async function syncHabitTask({ uid, item }) {
   const col = collection(db, 'users', uid, 'habits')
   const docRef = await addDoc(col, {
@@ -128,8 +130,9 @@ async function syncHabitTask({ uid, item }) {
   const fixed = { ...item, id: docRef.id, pending: false }
   upsertLocalHabit(uid, fixed)
 }
-// —— 读取 Quiz：本地优先，在线时合并云端 ——
-// 调用：getQuizResults({from,to}, uid)
+
+/* Read quiz results: local-first; merge cloud when online */
+// use: getQuizResults({from,to}, uid)
 async function getQuizResults({ from, to }, uid) {
   const local = readLocalQuiz(uid)
     .filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
@@ -146,6 +149,7 @@ async function getQuizResults({ from, to }, uid) {
       )
       const snap = await getDocs(qy)
       const cloud = snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: false }))
+      //merge by id (cloud wins)
       const merged = Array.from(new Map([...cloud, ...local].map((it) => [it.id, it])))
         .map(([, v]) => v)
         .sort((a, b) => (a.date < b.date ? 1 : -1))
@@ -158,10 +162,10 @@ async function getQuizResults({ from, to }, uid) {
   return local
 }
 
-// —— 新增 Quiz：先本地立即可见，再写云或入队 ——
-// 返回：离线时返回 pending 的临时对象；在线成功时返回已替换过 id 的正式对象
+/* temp row shown immediately; swap to confirmed on success */
+// returns: temp when offline; confirmed with cloud id when online
 async function addQuizResult(entry, uid) {
-  // 1) 先生成并写入“临时记录”（pending=true）
+  // 1) create temp (pending=true)
   const temp = {
     id: crypto.randomUUID(),
     date: entry.date,
@@ -173,7 +177,7 @@ async function addQuizResult(entry, uid) {
   }
   upsertLocalQuiz(uid, temp)
 
-  // 2) 在线：写云端成功后，删除临时记录，再写正式记录
+  // 2) online path: write, then replace temp with confirmed
   if (navigator.onLine) {
     try {
       const col = collection(db, 'users', uid, 'quizResults')
@@ -189,18 +193,18 @@ async function addQuizResult(entry, uid) {
       upsertLocalQuiz(uid, fixed)
       return fixed
     } catch {
-      // 在线失败就入队，返回临时对象
+      // online failed → queue and return temp
       enqueue('quiz_sync', { uid, item: temp })
       return temp
     }
   }
 
-  // 3) 离线：入队，返回临时对象
+  // 3) offline: queue and return temp
   enqueue('quiz_sync', { uid, item: temp })
   return temp
 }
 
-// —— 队列执行器：把 pending 的 Quiz 写到云端，并用正式 id 替换本地临时 id
+/* Queue processor : write pending quiz, swap temp id -> cloud id */
 async function syncQuizTask({ uid, item }) {
   const col = collection(db, 'users', uid, 'quizResults')
   const docRef = await addDoc(col, {
@@ -211,19 +215,19 @@ async function syncQuizTask({ uid, item }) {
     createdAt: serverTimestamp(),
   })
   const fixed = { ...item, id: docRef.id, pending: false }
-
-  // 关键：用云端 id 替换本地临时 id
+  // important: replace local temp by real id
   removeLocalQuizById(uid, item.id)
   upsertLocalQuiz(uid, fixed)
 }
 
+/* throw if not logged in */
 function requireUid(userId) {
   if (!userId) throw new Error('Not logged in')
   return userId
 }
 
+/*  Local storage helpers with a common prefix */
 const PREFIX = 'fit5032_'
-
 function getLS(key, fallback) {
   const raw = localStorage.getItem(PREFIX + key)
   try {
@@ -237,20 +241,24 @@ function setLS(key, val) {
 }
 
 export default {
+  /*read from local cache */
   async getRecipes() {
     return getLS('recipes', [])
   },
 
+  /* read my rating for a recipe */
   async getMyRating(recipeId, userId) {
     const snap = await getDoc(doc(db, 'recipes', recipeId, 'ratings', userId))
     return snap.exists() ? snap.data().score : null
   },
 
+  /* upsert rating with server timestamp */
   async rateRecipe(recipeId, userId, stars) {
     const ref = doc(db, 'recipes', recipeId, 'ratings', userId)
     await setDoc(ref, { score: stars, updatedAt: serverTimestamp() }, { merge: true })
   },
 
+  /* Ratings summary — avg and count */
   async getRecipeRatingSummary(recipeId) {
     const snaps = await getDocs(collection(db, 'recipes', recipeId, 'ratings'))
     let sum = 0
@@ -266,6 +274,7 @@ export default {
     return { avg, count }
   },
 
+  /*  simple meal plan generator (local only) */
   async generateMealPlan(prefs) {
     return {
       id: crypto.randomUUID(),
@@ -288,20 +297,21 @@ export default {
     return getLS('mealplans', [])
   },
 
+  /* save to cloud if logged in, else fallback local */
   async saveQuizAttempt(attempt, userId) {
     // attempt: { id?, date: 'YYYY-MM-DD', score, total, percent, note }
     const id = attempt.id || crypto.randomUUID()
     const payload = {
       ...attempt,
       id,
-      // 额外存一个时间戳，排序方便
+      // extra ts for ordering
       createdAt: serverTimestamp(),
     }
 
     try {
       const uid = requireUid(userId)
       await setDoc(doc(db, 'users', uid, 'quizAttempts', id), payload, { merge: true })
-      // 同步一份到本地当缓存（可选）
+      // mirror to local cache
       const all = getLS('quizAttempts', [])
       const idx = all.findIndex((x) => x.id === id)
       if (idx >= 0) all[idx] = attempt
@@ -309,7 +319,7 @@ export default {
       setLS('quizAttempts', all)
       return id
     } catch (e) {
-      // 未登录/离线 → 本地
+      // not logged in/offline → local
       const all = getLS('quizAttempts', [])
       const idx = all.findIndex((x) => x.id === id)
       if (idx >= 0) all[idx] = { ...attempt, id }
@@ -319,7 +329,7 @@ export default {
     }
   },
 
-  // 读取测验记录（支持按日期范围；已登录走云端，否则走本地）
+  /*Quiz attempts :list by range; cloud if possible, local fallback */
   async listQuizAttempts({ from, to } = {}, userId) {
     try {
       const uid = requireUid(userId)
@@ -330,14 +340,14 @@ export default {
       const snaps = await getDocs(q)
       return snaps.docs.map((d) => d.data())
     } catch {
-      // 本地回退
+      // local fallback
       const all = getLS('quizAttempts', [])
       if (!from && !to) return all
       return all.filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
     }
   },
 
-  // 首次迁移：把本地 quizAttempts 批量上传到云端（已登录时调用一次）
+  /* One-time migration : push local quizAttempts to cloud after login */
   async migrateLocalQuizAttempts(userId) {
     const uid = requireUid(userId)
     const all = getLS('quizAttempts', [])
@@ -348,6 +358,7 @@ export default {
     return all.length
   },
 
+  /*  Habits: save cloud if logged in, else local fallback */
   async saveHabitEntry(entry, userId) {
     // entry: { id?, date: 'YYYY-MM-DD', type, minutes, note }
     const id = entry.id || crypto.randomUUID()
@@ -360,7 +371,7 @@ export default {
     try {
       const uid = requireUid(userId)
       await setDoc(doc(db, 'users', uid, 'habits', id), payload, { merge: true })
-      // 同步一份到本地作为缓存（可选）
+      // mirror to local cache
       const all = getLS('habits', [])
       const idx = all.findIndex((x) => x.id === id)
       if (idx >= 0) all[idx] = entry
@@ -368,7 +379,7 @@ export default {
       setLS('habits', all)
       return id
     } catch (e) {
-      // 未登录/离线 → 本地
+      // not logged in/offline → local
       const all = getLS('habits', [])
       const idx = all.findIndex((x) => x.id === id)
       if (idx >= 0) all[idx] = { ...entry, id }
@@ -378,6 +389,7 @@ export default {
     }
   },
 
+  /* list by range with cloud preferred, local fallback */
   async getHabitEntries({ from, to } = {}, userId) {
     try {
       const uid = requireUid(userId)
@@ -393,6 +405,7 @@ export default {
     }
   },
 
+  /* push local habits to cloud after login */
   async migrateLocalHabits(userId) {
     const uid = requireUid(userId)
     const all = getLS('habits', [])
@@ -403,6 +416,7 @@ export default {
     return all.length
   },
 
+  /* local list (seed if empty) */
   async getResources() {
     const list = JSON.parse(localStorage.getItem('resources') || '[]')
     if (!list.length) return await this.seedResourcesIfEmpty()
@@ -412,6 +426,7 @@ export default {
     return getLS('challenges', [])
   },
 
+  /* first-time demo data */
   async seedResourcesIfEmpty() {
     const key = 'resources'
     const cur = JSON.parse(localStorage.getItem(key) || '[]')
@@ -499,10 +514,13 @@ export default {
     return seed
   },
 
+  /* Save resources list to local storage */
   async saveResources(list) {
     localStorage.setItem('resources', JSON.stringify(list || []))
     return true
   },
+
+  // expose offline-first helpers for other modules
   getHabitEntries,
   addHabitEntry,
   syncHabitTask,
