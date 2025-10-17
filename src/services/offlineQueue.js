@@ -18,13 +18,12 @@ export function enqueue(name, payload) {
 }
 
 export async function flush(processor) {
-  if (!navigator.onLine) return
   const q = loadQ()
   const remain = []
   for (const task of q) {
     try {
       await processor(task)
-    } catch (e) {
+    } catch {
       remain.push(task)
     }
   }

@@ -6,19 +6,27 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { logEvent } from '@/services/analyticsService'
 import { enqueue, flush } from '@/services/offlineQueue'
 
-// —— 离线任务 flush（保留你的实现）
 async function flushQueue() {
   await flush(async (task) => {
-    if (task.name === 'habit_update') {
-      await logEvent('habit_update')
+    if (task.name === 'habit_sync') {
+      await services.syncHabitTask(task.payload) // 调用存储层的执行器
     }
   })
 }
 function onOnline() {
   flushQueue()
+  loadRange()
 }
+
 onMounted(() => {
   window.addEventListener('online', onOnline)
+
+  onAuthStateChanged(getAuth(), (u) => {
+    uid.value = u?.uid || 'guest' // 你的项目里获取 uid 的方式
+    loadRange()
+  })
+
+  // 初次也尝试 flush，避免历史残留
   flushQueue()
 })
 onUnmounted(() => {
@@ -44,9 +52,8 @@ const addDays = (d, n) => {
 }
 const todayStr = fmt(new Date())
 
-// 表单
 const form = ref({
-  date: todayStr,
+  date: new Date().toISOString().slice(0, 10),
   type: 'Walk',
   minutes: 30,
   note: '',
@@ -76,54 +83,19 @@ watch(weekEnd, (val) => {
 const rows = ref([])
 
 async function loadRange() {
-  rows.value = await services.getHabitEntries(
-    { from: weekStart.value, to: weekEnd.value },
-    uid.value,
-  )
+  if (!uid.value) return
+  rows.value = await services.getHabitEntries({ from: '0000-01-01', to: '9999-12-31' }, uid.value)
 }
 
 watch([weekStart, weekEnd], loadRange)
 
-// 新增
 async function addEntry() {
-  if (
-    !form.value.date ||
-    !form.value.type ||
-    form.value.minutes === '' ||
-    form.value.minutes == null
-  )
-    return
-  if (new Date(form.value.date) > new Date(todayStr)) {
-    alert('Date cannot be in the future.')
-    return
-  }
-  const entry = {
-    id: crypto.randomUUID(),
-    date: form.value.date,
-    type: form.value.type,
-    minutes: Number(form.value.minutes),
-    note: form.value.note || '',
-  }
-
-  try {
-    await services.saveHabitEntry(entry, uid.value)
-    form.value.note = ''
-    // 自动扩展范围以包含新日期
-    const d = new Date(entry.date)
-    const s0 = new Date(weekStart.value)
-    const e0 = new Date(weekEnd.value)
-    if (d < s0) weekStart.value = fmt(d)
-    if (d > e0) weekEnd.value = fmt(d)
-    await loadRange()
-
-    if (navigator.onLine) {
-      await logEvent('habit_update')
-    } else {
-      enqueue('habit_update', { when: Date.now() })
-    }
-  } catch (e) {
-    enqueue('habit_update', { when: Date.now() })
-  }
+  if (!form.value.date || !form.value.type || !form.value.minutes) return
+  const item = await services.addHabitEntry({ ...form.value }, uid.value)
+  // 立刻插入到页面的 rows（本地临时 id + pending 状态）
+  rows.value = [item, ...rows.value]
+  // 重置表单
+  form.value = { date: new Date().toISOString().slice(0, 10), type: 'Walk', minutes: 30, note: '' }
 }
 
 // 汇总

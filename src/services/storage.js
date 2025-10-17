@@ -11,6 +11,102 @@ import {
   where,
   orderBy,
 } from 'firebase/firestore'
+import { enqueue } from '@/services/offlineQueue'
+// —— 本地 habit 缓存工具 ——
+// 说明：每个用户一个 key：habits_<uid>
+function upsertLocalHabit(uid, item) {
+  const key = `habits_${uid}`
+  const list = getLS(key, []) || []
+  const idx = list.findIndex((x) => x.id === item.id)
+  if (idx >= 0) list[idx] = item
+  else list.unshift(item) // 新的放前面
+  setLS(key, list)
+  return list
+}
+function readLocalHabits(uid) {
+  return getLS(`habits_${uid}`, []) || []
+}
+
+// —— 读取：本地优先，在线时再合并云端 ——
+// 调用：getHabitEntries({from,to}, uid)
+async function getHabitEntries({ from, to }, uid) {
+  const local = readLocalHabits(uid)
+    .filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  if (navigator.onLine) {
+    try {
+      const col = collection(db, 'users', uid, 'habits')
+      const q = query(
+        col,
+        where('date', '>=', from),
+        where('date', '<=', to),
+        orderBy('date', 'desc'),
+      )
+      const snap = await getDocs(q)
+      const cloud = snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: false }))
+      const mergedMap = new Map()
+      ;[...cloud, ...local].forEach((item) => mergedMap.set(item.id, item))
+      const merged = Array.from(mergedMap.values()).sort((a, b) => (a.date < b.date ? 1 : -1))
+      setLS(`habits_${uid}`, merged)
+      return merged
+    } catch {
+      return local
+    }
+  }
+  return local
+}
+
+// —— 新增：先本地立即可见，再写云或入队 ——
+// 调用：addHabitEntry(entry, uid)
+async function addHabitEntry(entry, uid) {
+  const item = {
+    id: crypto.randomUUID(), // 本地临时 id
+    date: entry.date,
+    type: entry.type,
+    minutes: Number(entry.minutes) || 0,
+    note: entry.note || '',
+    pending: !navigator.onLine,
+    createdAt: Date.now(),
+  }
+  upsertLocalHabit(uid, item)
+
+  if (navigator.onLine) {
+    try {
+      const col = collection(db, 'users', uid, 'habits')
+      const docRef = await addDoc(col, {
+        date: item.date,
+        type: item.type,
+        minutes: item.minutes,
+        note: item.note || '',
+        createdAt: serverTimestamp(),
+      })
+      item.id = docRef.id
+      item.pending = false
+      upsertLocalHabit(uid, item)
+    } catch {
+      enqueue('habit_sync', { uid, item })
+    }
+  } else {
+    enqueue('habit_sync', { uid, item })
+  }
+  return item
+}
+
+// —— 队列任务的执行器：把 pending 写上云端 ——
+// 调用：syncHabitTask({ uid, item })
+async function syncHabitTask({ uid, item }) {
+  const col = collection(db, 'users', uid, 'habits')
+  const docRef = await addDoc(col, {
+    date: item.date,
+    type: item.type,
+    minutes: item.minutes,
+    note: item.note || '',
+    createdAt: serverTimestamp(),
+  })
+  const fixed = { ...item, id: docRef.id, pending: false }
+  upsertLocalHabit(uid, fixed)
+}
 
 function requireUid(userId) {
   if (!userId) throw new Error('Not logged in')
@@ -298,4 +394,7 @@ export default {
     localStorage.setItem('resources', JSON.stringify(list || []))
     return true
   },
+  getHabitEntries,
+  addHabitEntry,
+  syncHabitTask,
 }
