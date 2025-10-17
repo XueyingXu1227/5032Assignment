@@ -26,6 +26,26 @@ function upsertLocalHabit(uid, item) {
 function readLocalHabits(uid) {
   return getLS(`habits_${uid}`, []) || []
 }
+// —— 本地 quiz 缓存工具 ——（每个用户一个 key：quiz_<uid>）
+function upsertLocalQuiz(uid, item) {
+  const key = `quiz_${uid}`
+  const list = getLS(key, []) || []
+  const idx = list.findIndex((x) => x.id === item.id)
+  if (idx >= 0) list[idx] = item
+  else list.unshift(item)
+  setLS(key, list)
+  return list
+}
+function readLocalQuiz(uid) {
+  return getLS(`quiz_${uid}`, []) || []
+}
+function removeLocalQuizById(uid, id) {
+  const key = `quiz_${uid}`
+  const list = getLS(key, []) || []
+  const next = list.filter((x) => x.id !== id)
+  setLS(key, next)
+  return next
+}
 
 // —— 读取：本地优先，在线时再合并云端 ——
 // 调用：getHabitEntries({from,to}, uid)
@@ -106,6 +126,94 @@ async function syncHabitTask({ uid, item }) {
   })
   const fixed = { ...item, id: docRef.id, pending: false }
   upsertLocalHabit(uid, fixed)
+}
+// —— 读取 Quiz：本地优先，在线时合并云端 ——
+// 调用：getQuizResults({from,to}, uid)
+async function getQuizResults({ from, to }, uid) {
+  const local = readLocalQuiz(uid)
+    .filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+
+  if (navigator.onLine) {
+    try {
+      const col = collection(db, 'users', uid, 'quizResults')
+      const qy = query(
+        col,
+        where('date', '>=', from),
+        where('date', '<=', to),
+        orderBy('date', 'desc'),
+      )
+      const snap = await getDocs(qy)
+      const cloud = snap.docs.map((d) => ({ id: d.id, ...d.data(), pending: false }))
+      const merged = Array.from(new Map([...cloud, ...local].map((it) => [it.id, it])))
+        .map(([, v]) => v)
+        .sort((a, b) => (a.date < b.date ? 1 : -1))
+      setLS(`quiz_${uid}`, merged)
+      return merged
+    } catch {
+      return local
+    }
+  }
+  return local
+}
+
+// —— 新增 Quiz：先本地立即可见，再写云/入队 ——
+// 调用：addQuizResult(entry, uid)
+async function addQuizResult(entry, uid) {
+  // 1) 先生成并写入“临时记录”（pending=true）
+  const temp = {
+    id: crypto.randomUUID(),
+    date: entry.date,
+    score: Number(entry.score) || 0,
+    total: Number(entry.total) || 0,
+    note: entry.note || '',
+    pending: !navigator.onLine,
+    createdAt: Date.now(),
+  }
+  upsertLocalQuiz(uid, temp)
+
+  // 2) 在线：写云端成功后，删除临时记录，再写正式记录
+  if (navigator.onLine) {
+    try {
+      const col = collection(db, 'users', uid, 'quizResults')
+      const docRef = await addDoc(col, {
+        date: temp.date,
+        score: temp.score,
+        total: temp.total,
+        note: temp.note,
+        createdAt: serverTimestamp(),
+      })
+      const fixed = { ...temp, id: docRef.id, pending: false }
+      removeLocalQuizById(uid, temp.id) // ← 先删旧的临时
+      upsertLocalQuiz(uid, fixed) // ← 再写正式
+      return fixed
+    } catch {
+      enqueue('quiz_sync', { uid, item: temp })
+      return temp
+    }
+  }
+
+  // 3) 离线：入队，返回临时记录（pending=true）
+  enqueue('quiz_sync', { uid, item: temp })
+  return temp
+}
+
+// —— 队列执行器：把 pending 的 Quiz 写到云端 ——
+// 调用：syncQuizTask({ uid, item })
+async function syncQuizTask({ uid, item }) {
+  const col = collection(db, 'users', uid, 'quizResults')
+  const docRef = await addDoc(col, {
+    date: item.date,
+    score: item.score,
+    total: item.total,
+    note: item.note,
+    createdAt: serverTimestamp(),
+  })
+  const fixed = { ...item, id: docRef.id, pending: false }
+
+  // 关键：用云端 id 替换本地临时 id
+  removeLocalQuizById(uid, item.id)
+  upsertLocalQuiz(uid, fixed)
 }
 
 function requireUid(userId) {
@@ -397,4 +505,7 @@ export default {
   getHabitEntries,
   addHabitEntry,
   syncHabitTask,
+  getQuizResults,
+  addQuizResult,
+  syncQuizTask,
 }
