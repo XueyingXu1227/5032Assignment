@@ -1,10 +1,12 @@
 console.log('VITE_FUNCTIONS_BASE =', import.meta.env.VITE_FUNCTIONS_BASE)
 import { getAuth } from 'firebase/auth'
 
+/*call backend email APIs securely */
 const DEFAULT_BASE = 'https://us-central1-fit5032assessment-xu.cloudfunctions.net'
 const BASE = (import.meta.env && import.meta.env.VITE_FUNCTIONS_BASE) || DEFAULT_BASE
 console.log('VITE_FUNCTIONS_BASE =', import.meta.env?.VITE_FUNCTIONS_BASE, '| BASE =', BASE)
 
+/*authenticated fetch with Firebase ID token */
 async function authedFetch(path, payload) {
   const auth = getAuth()
   const user = auth.currentUser
@@ -21,9 +23,12 @@ async function authedFetch(path, payload) {
   return res.json()
 }
 
+/* send one email (HTML + attachments) */
 export function sendEmail({ to, subject, html, attachments = [], storageAttachments = [] }) {
   return authedFetch('/email', { to, subject, html, attachments, storageAttachments })
 }
+
+/* send to multiple users (admin only) */
 export function sendBulkEmail({
   userIds,
   subject,
@@ -34,12 +39,14 @@ export function sendBulkEmail({
   return authedFetch('/bulkEmail', { userIds, subject, html, attachments, storageAttachments })
 }
 
+/* convert binary or text to Base64 for file attachments */
 export function arrayBufferToBase64(buf) {
   const bytes = new Uint8Array(buf)
   let binary = ''
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
   return btoa(binary)
 }
+
 export function textToBase64(text) {
   return btoa(unescape(encodeURIComponent(text)))
 }

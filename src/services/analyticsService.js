@@ -14,7 +14,7 @@ import { getAuth } from 'firebase/auth'
 const COL_EVENTS = 'events'
 const COL_USERS = 'users'
 
-// ----- Simple Local Cache -----
+/* tiny localStorage cache to avoid extra reads */
 const cacheSet = (k, v) => localStorage.setItem(k, JSON.stringify({ t: Date.now(), v }))
 const cacheGet = (k, maxAgeMs = 5 * 60 * 1000) => {
   try {
@@ -27,6 +27,7 @@ const cacheGet = (k, maxAgeMs = 5 * 60 * 1000) => {
   }
 }
 
+/* write a simple event row to Firestore */
 export async function logEvent(type, extra = {}) {
   const auth = getAuth()
   const uid = auth.currentUser?.uid || null
@@ -43,9 +44,11 @@ export async function logEvent(type, extra = {}) {
   }
 }
 
+/* group events by day (last N days) with offline cache */
 export async function getDailySeries(days = 7) {
   const key = `cache:daily:${days}`
 
+  // use cache when offline
   if (!navigator.onLine) {
     const cached = cacheGet(key)
     if (cached) return cached
@@ -81,6 +84,7 @@ export async function getDailySeries(days = 7) {
     }
   })
 
+  // ensure every day exists, even if zero events (nice for charts)
   const res = []
   const today = new Date()
   for (let i = days - 1; i >= 0; i--) {
@@ -101,6 +105,7 @@ export async function getDailySeries(days = 7) {
   return res
 }
 
+/* top clicked resources in last N days */
 export async function getResourceTop(days = 7, topN = 5) {
   const key = `cache:top:${days}`
   if (!navigator.onLine) {
@@ -130,6 +135,7 @@ export async function getResourceTop(days = 7, topN = 5) {
   return res
 }
 
+/*  quick “today events” + total users */
 export async function getKpis(daysForToday = 1) {
   const series = await getDailySeries(daysForToday)
   const today = series.at(-1) || {
@@ -149,7 +155,7 @@ export async function getKpis(daysForToday = 1) {
   return { todayEvents, totalUsers }
 }
 
-// ====== Quickly generate demo data ======
+/* helper to seed random events for charts */
 export async function seedDemoData() {
   const types = ['habit_update', 'resource_click', 'mealplan_generate']
   const slugs = ['fiber', 'hydration', 'sleep', 'workout', 'mealprep']

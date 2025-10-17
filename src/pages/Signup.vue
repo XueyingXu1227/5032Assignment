@@ -1,9 +1,11 @@
 <template>
   <div class="container mt-5">
+    <!-- user creates an account -->
     <h2 class="text-center mb-4">Sign Up</h2>
 
+    <!-- show inline errors for each field -->
     <form @submit.prevent="handleSubmit" novalidate>
-      <!-- Email -->
+      <!--Email field with basic format check -->
       <div class="mb-3">
         <label for="email" class="form-label">Email</label>
         <input
@@ -20,7 +22,7 @@
         <p id="emailErr" class="invalid-feedback" role="alert">{{ emailError }}</p>
       </div>
 
-      <!-- Username -->
+      <!--Username rules : 2–20 chars letters/numbers/_ -->
       <div class="mb-3">
         <label for="username" class="form-label">
           Username <small class="text-muted">(min. 2 characters: letters/numbers/_)</small>
@@ -38,7 +40,7 @@
         <p id="usernameErr" class="invalid-feedback" role="alert">{{ usernameError }}</p>
       </div>
 
-      <!-- Password -->
+      <!--Password rules: 6, chars letters , numbers -->
       <div class="mb-3">
         <label for="password" class="form-label">
           Password <small class="text-muted">(min. 6 chars, letters+numbers)</small>
@@ -57,7 +59,7 @@
         <p id="pwdErr" class="invalid-feedback" role="alert">{{ passwordError }}</p>
       </div>
 
-      <!-- Confirm -->
+      <!--Confirm password must match -->
       <div class="mb-3">
         <label for="confirmPassword" class="form-label">Confirm Password</label>
         <input
@@ -73,24 +75,25 @@
         <p id="cpErr" class="invalid-feedback" role="alert">{{ confirmPasswordError }}</p>
       </div>
 
-      <!-- Submit button -->
+      <!-- Submit to create account -->
       <button type="submit" class="btn btn-primary w-100">Register</button>
     </form>
   </div>
 </template>
 
 <script setup>
+/*sign up with Firebase and save username */
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import auth from '@/services/auth'
 
-// User input fields
+/* Form fields */
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
 const email = ref('')
 
-// Error message
+/* Error messages */
 const usernameError = ref('')
 const passwordError = ref('')
 const confirmPasswordError = ref('')
@@ -98,7 +101,7 @@ const emailError = ref('')
 
 const router = useRouter()
 
-// Individual authentication of user names
+/*username pattern check */
 const validateUsername = () => {
   const regex = /^[a-zA-Z0-9_]{2,20}$/
   if (!username.value.trim()) {
@@ -110,7 +113,7 @@ const validateUsername = () => {
   }
 }
 
-// Verify passwords individually
+/* password needs letters and numbers */
 const validatePassword = () => {
   const regex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/
   if (!password.value) {
@@ -122,17 +125,19 @@ const validatePassword = () => {
   }
 }
 
-// Individual verification of confirmation password
+/* confirm must match password */
 const validateConfirmPassword = () => {
   confirmPasswordError.value =
     confirmPassword.value === password.value ? '' : 'Passwords do not match'
 }
 
+/*simple email format check */
 const validateEmail = () => {
   const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)
   emailError.value = email.value.trim() && ok ? '' : 'Valid email is required'
 }
 
+/* try sign up; show friendly error based on Firebase code */
 const handleSubmit = async () => {
   validateEmail()
   validateUsername()
@@ -145,7 +150,7 @@ const handleSubmit = async () => {
     alert('Registration successful!')
     router.push('/login')
   } catch (e) {
-    //usernameError.value = 'Registration failed'
+    // map firebase errors to field messages
     console.error('Firebase signUp error:', e.code, e.message)
     const map = {
       'auth/email-already-in-use': 'This email is already registered',

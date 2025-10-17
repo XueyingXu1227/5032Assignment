@@ -13,6 +13,7 @@ import Map from '../pages/Map.vue'
 import AnalyticsView from '../pages/AnalyticsView.vue'
 import AdminDashboard from '../pages/AdminDashboard.vue'
 
+/* route table for all pages (names help with nav/links) */
 const routes = [
   { path: '/', name: 'Home', component: Home },
   { path: '/signup', name: 'Signup', component: Signup },
@@ -34,11 +35,13 @@ const routes = [
   // adding other pages later
 ]
 
+/*  basic history mode setup */
 const router = createRouter({
   history: createWebHistory(),
   routes,
 })
 
+/* wait until auth state is known before guarding routes */
 let authReady = false
 const waitForAuthReady = new Promise((resolve) => {
   auth.onAuthStateChanged(() => {
@@ -49,15 +52,18 @@ const waitForAuthReady = new Promise((resolve) => {
   })
 })
 
+/*  block pages needing login/admin; redirect as needed */
 router.beforeEach(async (to, from, next) => {
   if (!authReady) await waitForAuthReady
 
   const me = auth.getCurrentUser()
 
+  // need login
   if (to.meta?.requiresAuth && !me) {
     return next('/login')
   }
 
+  // need admin
   if (to.meta?.requiresAdmin) {
     if (!me) return next('/login')
     const role = await auth.getCurrentUserRole()
@@ -69,6 +75,7 @@ router.beforeEach(async (to, from, next) => {
   return next()
 })
 
+/* move focus to main content after navigation */
 router.afterEach(() => {
   setTimeout(() => {
     const main = document.getElementById('main')

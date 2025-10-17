@@ -1,10 +1,12 @@
 <script setup>
 import { ref } from 'vue'
 
+/* Form state */
 const score = ref(null)
 const submitted = ref(false)
 const answers = ref({})
 
+/* simple questions array used by the form */
 const questions = [
   {
     id: 1,
@@ -26,6 +28,7 @@ const questions = [
   },
 ]
 
+/* count correct answers on submit */
 function submitQuiz() {
   let correct = 0
   questions.forEach((q) => {
@@ -35,6 +38,7 @@ function submitQuiz() {
   submitted.value = true
 }
 
+/* clear state to retake the quiz */
 function resetQuiz() {
   submitted.value = false
   score.value = null
@@ -44,13 +48,16 @@ function resetQuiz() {
 
 <template>
   <div class="container mt-4">
+    <!-- demo quiz users can try quickly -->
     <h2 class="mb-3">Self-check Quiz Demo</h2>
 
+    <!-- short instructions in an alert box -->
     <div class="alert alert-info small mb-3">
       This is a short demo quiz. Select your answers and click
       <strong>Submit</strong> to see your score.
     </div>
 
+    <!-- radios bound to answers; prevents page reload -->
     <form v-if="!submitted" @submit.prevent="submitQuiz">
       <div v-for="q in questions" :key="q.id" class="mb-4">
         <p>
@@ -71,6 +78,7 @@ function resetQuiz() {
       <button class="btn btn-primary" type="submit">Submit</button>
     </form>
 
+    <!-- show score and link to record it on results page -->
     <div v-else class="text-center mt-4">
       <h4>Your score: {{ score }}/{{ questions.length }}</h4>
       <p>
@@ -85,6 +93,7 @@ function resetQuiz() {
 </template>
 
 <style scoped>
+/* limit width for nicer reading on large screens */
 .container {
   max-width: 700px;
 }

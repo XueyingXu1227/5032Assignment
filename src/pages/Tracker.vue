@@ -6,44 +6,48 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { logEvent } from '@/services/analyticsService'
 import { enqueue, flush } from '@/services/offlineQueue'
 
+/* process queued tasks for habits */
 async function flushQueue() {
   await flush(async (task) => {
     if (task.name === 'habit_sync') {
-      await services.syncHabitTask(task.payload) // 调用存储层的执行器
+      await services.syncHabitTask(task.payload)
     }
   })
 }
+/* when back online, sync then reload data */
 function onOnline() {
   flushQueue()
   loadRange()
 }
 
+/*  listen auth; Offline sync on mount */
 onMounted(() => {
   window.addEventListener('online', onOnline)
 
   onAuthStateChanged(getAuth(), (u) => {
-    uid.value = u?.uid || 'guest' // 你的项目里获取 uid 的方式
+    uid.value = u?.uid || 'guest'
     loadRange()
   })
 
-  // 初次也尝试 flush，避免历史残留
+  // first time also try flush to clear leftovers
   flushQueue()
 })
 onUnmounted(() => {
   window.removeEventListener('online', onOnline)
 })
 
-// 登录用户
+/*  keep current uid and refresh on change */
 const uid = ref(null)
 onMounted(() => {
   const auth = getAuth()
   onAuthStateChanged(auth, (user) => {
     uid.value = user ? user.uid : null
-    loadRange() // 登录状态变化时刷新数据源
+    // refresh when login state changes
+    loadRange()
   })
 })
 
-// today
+/*  today string to cap date inputs */
 const fmt = (d) => new Date(d).toISOString().slice(0, 10)
 const addDays = (d, n) => {
   const x = new Date(d)
@@ -52,6 +56,7 @@ const addDays = (d, n) => {
 }
 const todayStr = fmt(new Date())
 
+/*add new habit entries */
 const form = ref({
   date: new Date().toISOString().slice(0, 10),
   type: 'Walk',
@@ -59,7 +64,7 @@ const form = ref({
   note: '',
 })
 
-// 选择的日期范围
+/*  custom date range for the table */
 const weekStart = ref(fmt(new Date()))
 const weekEnd = ref(fmt(new Date()))
 
@@ -79,7 +84,7 @@ watch(weekEnd, (val) => {
   }
 })
 
-// 当前范围内的数据（直接从 services 按范围拉取）
+/*  rows in current range from storage */
 const rows = ref([])
 
 async function loadRange() {
@@ -89,16 +94,17 @@ async function loadRange() {
 
 watch([weekStart, weekEnd], loadRange)
 
+/*  basic checks;Offline :show immediately, sync later */
 async function addEntry() {
   if (!form.value.date || !form.value.type || !form.value.minutes) return
   const item = await services.addHabitEntry({ ...form.value }, uid.value)
-  // 立刻插入到页面的 rows（本地临时 id + pending 状态）
+  // insert at top; pending when offline
   rows.value = [item, ...rows.value]
-  // 重置表单
+  // reset form
   form.value = { date: new Date().toISOString().slice(0, 10), type: 'Walk', minutes: 30, note: '' }
 }
 
-// 汇总
+/*  total minutes and per-type breakdown */
 const totalMinutes = computed(() => rows.value.reduce((s, r) => s + (Number(r.minutes) || 0), 0))
 const byType = computed(() => {
   const m = {}
@@ -108,7 +114,7 @@ const byType = computed(() => {
   return Object.entries(m).map(([type, minutes]) => ({ type, minutes }))
 })
 
-// —— 交互式表格（排序/过滤/分页：沿用实现）
+/*sort/filter/pagination state */
 const sortBy = ref(localStorage.getItem('trk_sortBy') || 'date')
 const sortDir = ref(localStorage.getItem('trk_sortDir') || 'desc')
 const pageSize = 10
@@ -125,6 +131,7 @@ const colFilters = reactive({
 const typeOptions = computed(() => Array.from(new Set(rows.value.map((r) => r.type))).sort())
 const norm = (s) => (s ?? '').toString().trim().toLowerCase()
 
+/* apply filters then sort */
 const filteredSorted = computed(() => {
   const from = colFilters.from ? new Date(colFilters.from) : null
   const to = colFilters.to ? new Date(colFilters.to) : null
@@ -165,6 +172,7 @@ const filteredSorted = computed(() => {
   return data
 })
 
+/* totals and page slice */
 const total = computed(() => filteredSorted.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const paged = computed(() => {
@@ -173,6 +181,7 @@ const paged = computed(() => {
   return filteredSorted.value.slice(start, start + pageSize)
 })
 
+/*sorting and pagination actions */
 function changeSort(field) {
   if (sortBy.value === field) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else {
@@ -188,13 +197,14 @@ function goFirstPage() {
   page.value = 1
 }
 
+/* remember sort and page in localStorage */
 watch([sortBy, sortDir, page], () => {
   localStorage.setItem('trk_sortBy', sortBy.value)
   localStorage.setItem('trk_sortDir', sortDir.value)
   localStorage.setItem('trk_page', String(page.value))
 })
 
-// 导出
+/* build rows for CSV/PDF from filtered data or selected subset */
 const selectedIds = ref([])
 const exportHeaders = ['Date', 'Type', 'Minutes', 'Note']
 const exportRows = computed(() => {
@@ -215,11 +225,13 @@ function onExportPDF() {
   )
 }
 
+/*  initial load */
 onMounted(loadRange)
 </script>
 
 <template>
   <div class="container mt-5">
+    <!-- tracker intro with quick tips -->
     <h1 class="mb-3">Habit Tracker</h1>
     <div class="alert alert-info mb-3" role="region" aria-label="How to use habit tracker">
       <strong>Log your daily activity</strong>
@@ -234,7 +246,7 @@ onMounted(loadRange)
       </ul>
     </div>
 
-    <!-- input -->
+    <!--add new habit entry -->
     <div class="card mb-3 p-3">
       <div class="row g-2">
         <div class="col-md-3">
@@ -264,7 +276,7 @@ onMounted(loadRange)
       <div class="mt-2"><button class="btn btn-primary" @click="addEntry">Add</button></div>
     </div>
 
-    <!-- Custom Date Range + Toolbar -->
+    <!--Toolbar : custom range, selection helpers, export, sort -->
     <div class="d-flex align-items-center gap-2 mb-2">
       <label class="form-label mb-0 me-2">Start</label>
       <input
@@ -298,11 +310,12 @@ onMounted(loadRange)
       </div>
 
       <div class="btn-group">
+        <!-- Export — CSV and PDF -->
         <button class="btn btn-outline-secondary" @click="onExportCSV">Export CSV</button>
         <button class="btn btn-outline-secondary" @click="onExportPDF">Export PDF</button>
       </div>
 
-      <!-- Sort buttons -->
+      <!-- ort buttons for date/type/minutes -->
       <div class="btn-group" role="group" aria-label="Sort">
         <button
           class="btn btn-outline-secondary"
@@ -328,6 +341,7 @@ onMounted(loadRange)
       </div>
     </div>
 
+    <!-- show total minutes and per-type totals in badges -->
     <div class="alert alert-info py-2">
       <strong>Total minutes in range:</strong> {{ totalMinutes }}.
       <span v-for="x in byType" :key="x.type" class="badge bg-secondary ms-2"
@@ -335,7 +349,7 @@ onMounted(loadRange)
       >
     </div>
 
-    <!-- interactive table -->
+    <!-- sortable, filterable, paginated -->
     <div class="table-responsive">
       <table class="table align-middle" aria-describedby="tracker-caption">
         <caption id="tracker-caption" class="visually-hidden">
@@ -352,7 +366,7 @@ onMounted(loadRange)
             <th scope="col">Note</th>
           </tr>
 
-          <!-- Column Filter Rows -->
+          <!--Per-column filter row -->
           <tr>
             <th></th>
             <th class="d-flex gap-1">
@@ -424,6 +438,7 @@ onMounted(loadRange)
         </thead>
 
         <tbody>
+          <!-- checkbox selection works with export -->
           <tr v-for="r in paged" :key="r.id">
             <td>
               <input type="checkbox" class="form-check-input" :value="r.id" v-model="selectedIds" />
@@ -440,7 +455,7 @@ onMounted(loadRange)
       </table>
     </div>
 
-    <!-- Pagination -->
+    <!-- Pagination controls -->
     <nav class="d-flex justify-content-between align-items-center" aria-label="Pagination">
       <span class="text-muted">Total {{ total }} • Page {{ page }} of {{ totalPages }}</span>
       <div class="btn-group">
