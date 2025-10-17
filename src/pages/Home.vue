@@ -4,14 +4,17 @@ import FeatureCard from '../components/FeatureCard.vue'
 
 <template>
   <div>
-    <!-- Hero welcome area -->
+    <!-- center hero content and adapt to all screen sizes -->
+    <!-- router-links direct to feature pages -->
     <div class="container text-center my-5">
       <h1>Rediscovering sub-health</h1>
       <p>Welcome to the Healthy Living Recommendation Platform</p>
+      <!-- quick access to quiz even before login -->
       <router-link to="/quiz" class="btn btn-outline-dark">Start self-testing</router-link>
     </div>
 
-    <!-- Three Functional Introduction Areas -->
+    <!-- cards arranged in flexible grid -->
+    <!-- each card uses props for title and description -->
     <div class="container d-flex justify-content-center gap-4 my-5 flex-wrap">
       <div class="row g-4">
         <div class="col-md-4">
@@ -38,7 +41,8 @@ import FeatureCard from '../components/FeatureCard.vue'
       </div>
     </div>
 
-    <!-- CTA Registration Guidance Area -->
+    <!-- guide users to sign up or log in -->
+    <!-- clear text and link labels for new users -->
     <div class="text-center mb-4">
       <p>Start your health journey!</p>
       <router-link to="/signup">[Sign up]</router-link>
@@ -48,6 +52,7 @@ import FeatureCard from '../components/FeatureCard.vue'
 </template>
 
 <style scoped>
+/* structure main sections for clear layout */
 .hero {
   text-align: center;
   margin: 40px 0;

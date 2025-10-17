@@ -26,6 +26,7 @@ const SPEEDS = {
   jog: 8,
 }
 
+/* init Mapbox map with basic controls */
 onMounted(() => {
   mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
   map.value = new mapboxgl.Map({
@@ -40,12 +41,14 @@ onMounted(() => {
   map.value.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-left')
 })
 
+/* clean up map and layers when leaving the page */
 onBeforeUnmount(() => {
   clearRoute()
   if (meMarker) meMarker.remove()
   if (map.value) map.value.remove()
 })
 
+/* locate user and add a marker on the map */
 async function locateMe() {
   if (!navigator.geolocation) throw new Error('Geolocation not supported')
   const pos = await new Promise((resolve, reject) => {
@@ -67,6 +70,7 @@ async function locateMe() {
   map.value.easeTo({ center: ll, zoom: 14, duration: 0 })
 }
 
+/* fit map to a list of lng/lat pairs */
 function fitToBoundsLngLatPairs(pairs) {
   if (!pairs.length) return
   const b = new mapboxgl.LngLatBounds(pairs[0], pairs[0])
@@ -74,6 +78,7 @@ function fitToBoundsLngLatPairs(pairs) {
   map.value.fitBounds(b, { padding: 60, duration: 0 })
 }
 
+/*  clear active route and directions list */
 function clearRoute() {
   routeInfo.value = ''
   directions.value = []
@@ -81,6 +86,7 @@ function clearRoute() {
   if (map.value?.getSource(routeSourceId)) map.value.removeSource(routeSourceId)
 }
 
+/* find a destination point by bearing and distance */
 function destByBearing(center, distanceMeters, bearingDeg) {
   const theta = (bearingDeg * Math.PI) / 180
   const dNorth = Math.cos(theta) * distanceMeters
@@ -90,6 +96,7 @@ function destByBearing(center, distanceMeters, bearingDeg) {
   return { lat: center.lat + dLat, lon: center.lon + dLon }
 }
 
+/*  build 3 candidate out-and-back routes by heading */
 async function recommendRoutes() {
   try {
     clearRoute()
@@ -107,6 +114,7 @@ async function recommendRoutes() {
     for (const h of headings) {
       const to = destByBearing(me.value, oneWayMeters, h)
 
+      // ask OSRM via loopFootRoute for a foot route, then flip to [lng,lat]
       const r = await loopFootRoute(me.value, to)
 
       const lineLngLat = r.coordinates.map(([lat, lon]) => [lon, lat])
@@ -121,6 +129,7 @@ async function recommendRoutes() {
       })
     }
 
+    //Pick the route whose duration is closest to target time
     results.sort((a, b) => Math.abs(a.duration - targetSec) - Math.abs(b.duration - targetSec))
     candidates.value = results
 
@@ -131,6 +140,7 @@ async function recommendRoutes() {
   }
 }
 
+/* draw the chosen route on the map and build turn list */
 function selectRoute(id) {
   const item = candidates.value.find((x) => x.id === id)
   if (!item) return
@@ -167,6 +177,7 @@ function selectRoute(id) {
   }))
 }
 
+/* remove all candidates and clear the map line */
 function clearCandidates() {
   candidates.value = []
   clearRoute()
@@ -175,8 +186,10 @@ function clearCandidates() {
 
 <template>
   <div class="container mt-4">
+    <!-- simple explainer of how to use the route tool -->
     <h2 class="mb-3">Healthy Route Recommender</h2>
 
+    <!-- region label explains map data sources -->
     <div class="alert alert-info mb-3" role="region" aria-label="How this works">
       <strong>Plan a workout route</strong>
       <ul class="mb-0 mt-2">
@@ -189,12 +202,15 @@ function clearCandidates() {
       </small>
     </div>
 
+    <!-- pick pace and time then generate suggestions -->
     <div class="controls row g-2 align-items-center mb-3">
       <div class="col-auto">
+        <!-- Locate user on map -->
         <button class="btn btn-outline-primary" @click="locateMe">Locate me</button>
       </div>
 
       <div class="col-auto">
+        <!--Pace selector with custom speed option -->
         <label class="form-label me-2 mb-0">Pace</label>
         <select class="form-select d-inline-block" style="width: auto" v-model="pace">
           <option value="walk">Walk (~4 km/h)</option>
@@ -215,6 +231,7 @@ function clearCandidates() {
       </div>
 
       <div class="col-auto">
+        <!-- Time selector for total workout minutes -->
         <label class="form-label me-2 mb-0">Time</label>
         <select class="form-select d-inline-block" style="width: auto" v-model.number="minutes">
           <option :value="10">10 min</option>
@@ -224,18 +241,22 @@ function clearCandidates() {
       </div>
 
       <div class="col-auto">
+        <!-- Generate recommended routes -->
         <button class="btn btn-primary" @click="recommendRoutes">Recommend</button>
       </div>
 
       <div class="col-auto">
+        <!-- Clear candidates and remove route line -->
         <button class="btn btn-outline-secondary" @click="clearCandidates">Clear</button>
       </div>
 
+      <!-- Quick summary of chosen route distance and time -->
       <div class="col-auto ms-auto" v-if="routeInfo">
         <span class="badge bg-secondary">{{ routeInfo }}</span>
       </div>
     </div>
 
+    <!-- Map container with ARIA role for assistive tech -->
     <div
       ref="mapEl"
       role="application"
@@ -243,6 +264,7 @@ function clearCandidates() {
       style="height: 460px; width: 100%; border-radius: 8px; border: 1px solid #eee"
     ></div>
 
+    <!-- List of suggested routes with quick select -->
     <div class="mt-3" v-if="candidates.length">
       <h5 class="mb-2">Suggested routes (out-and-back)</h5>
       <div class="row g-3">
@@ -266,6 +288,7 @@ function clearCandidates() {
       </div>
     </div>
 
+    <!-- Directions list — step by step guidance for the chosen route -->
     <div class="mt-4" v-if="directions.length">
       <h5 class="mb-2">Turn-by-turn directions</h5>
       <ol class="list-group list-group-numbered">

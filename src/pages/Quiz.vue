@@ -5,16 +5,16 @@ import services from '@/services/storage'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { flush } from '@/services/offlineQueue'
 
-// 今天（禁止选择未来日期）
+/* block future dates using today string */
 const todayStr = new Date().toISOString().slice(0, 10)
 
-// 登录用户
+/* keep current user id */
 const uid = ref(null)
 
-// 原始列表数据（本地优先 + 云端合并的结果）
+/* combined list (local first, then cloud merged) */
 const quizRows = ref([])
 
-// 表单
+/*simple inputs for date/score/total/note */
 const quizForm = ref({
   date: todayStr,
   score: 7,
@@ -22,22 +22,22 @@ const quizForm = ref({
   note: '',
 })
 
-// 把“临时 + 正式”重复的记录过滤掉（优先保留非 pending）
+/* de-duplicate “pending + confirmed” items in view */
 const visibleRows = computed(() => {
   const map = new Map()
   for (const r of quizRows.value) {
-    // 用“内容指纹”去重：同一天、同分数、同总分、同备注视为同一条
+    // content fingerprint: same date/score/total/note considered the same
     const key = [r.date, Number(r.score) || 0, Number(r.total) || 0, r.note || ''].join('|')
     const existed = map.get(key)
     if (!existed) {
       map.set(key, r)
     } else {
-      // 如果已有一条 pending，而新来的是非 pending，就用非 pending 覆盖
+      // prefer confirmed over pending
       if (existed.pending && !r.pending) map.set(key, r)
-      // 如果两条都是 pending 或两条都非 pending，保持先来的（稳定顺序）
+      // if both same state, keep the first (stable order)
     }
   }
-  // 保持原有顺序：按 quizRows 的出现顺序输出
+  // keep original order
   const ordered = []
   for (const r of quizRows.value) {
     const key = [r.date, Number(r.score) || 0, Number(r.total) || 0, r.note || ''].join('|')
@@ -50,7 +50,7 @@ const visibleRows = computed(() => {
   return ordered
 })
 
-// —— 队列 flush（把离线期间添加的 quiz 同步到云端）
+/*push queued quiz items to cloud */
 async function flushQuizQueue() {
   await flush(async (task) => {
     if (task.name === 'quiz_sync') {
@@ -59,13 +59,13 @@ async function flushQuizQueue() {
   })
 }
 
+/* when back online, sync first then reload */
 async function onOnline() {
-  //先 flush 再加载，UI 才是最终状态
   await flushQuizQueue()
   await loadQuizRange()
 }
 
-// 首次加载 & 绑定 online 事件
+/*watch auth state, then load data */
 onMounted(() => {
   window.addEventListener('online', onOnline)
   const auth = getAuth()
@@ -73,14 +73,14 @@ onMounted(() => {
     uid.value = user ? user.uid : null
     await loadQuizRange()
   })
-  // 刚进入页面也尝试同步一次
+  // try to sync once at page open
   flushQuizQueue()
 })
 onUnmounted(() => {
   window.removeEventListener('online', onOnline)
 })
 
-// 读取：本地优先，在线时合并云端
+/*  load all results for this user (local-first merge) */
 async function loadQuizRange() {
   if (!uid.value) return
   quizRows.value = await services.getQuizResults(
@@ -89,7 +89,8 @@ async function loadQuizRange() {
   )
 }
 
-// 新增：先本地立即显示，再写云或入队
+/* check date and score before adding
+   local insert shows immediately; cloud write later if offline */
 async function addQuiz() {
   const s = Number(quizForm.value.score)
   const t = Number(quizForm.value.total)
@@ -100,19 +101,19 @@ async function addQuiz() {
   if (!t || s < 0 || s > t) return
 
   const item = await services.addQuizResult({ ...quizForm.value }, uid.value)
-  // 立刻插入到页面的数组（离线时有 pending: true）
+  // show instantly (pending when offline)
   quizRows.value = [item, ...quizRows.value]
 
-  // 如果此刻在线，马上 reload 一次（把临时替成正式）
+  // if online, reload to swap pending with confirmed
   if (navigator.onLine) {
     await loadQuizRange()
   }
 
-  // 清理备注
+  // clear note for next input
   quizForm.value.note = ''
 }
 
-// —— 统计与导出（都使用 visibleRows，避免把 pending 重复导出）
+/* Export — compute average percent from visible rows only */
 const selectedIds = ref([])
 const avgPercent = computed(() => {
   if (!visibleRows.value.length) return 0
@@ -123,6 +124,7 @@ const avgPercent = computed(() => {
   return Math.round(total / visibleRows.value.length)
 })
 
+/*  build CSV/PDF rows (use visibleRows to avoid duplicates) */
 const exportHeaders = ['Date', 'Score', 'Total', 'Percent', 'Note']
 const exportRows = computed(() => {
   const src = selectedIds.value.length
@@ -143,8 +145,10 @@ function onExportPDF() {
 
 <template>
   <div class="container mt-5">
+    <!-- Interactive Page — simple explainer for what this page does -->
     <h1 class="mb-3">Self-check Quiz</h1>
 
+    <!--Accessibility — region label and clear guidance -->
     <div class="alert alert-info mb-3" role="region" aria-label="About this page">
       <strong>Track your quiz progress</strong>
       <ul class="mb-0 mt-2">
@@ -161,7 +165,7 @@ function onExportPDF() {
       </a>
     </div>
 
-    <!-- 表单 -->
+    <!--add a new quiz result (with simple checks in script) -->
     <div class="card p-3 mb-3">
       <div class="row g-2">
         <div class="row mb-3">
@@ -196,10 +200,12 @@ function onExportPDF() {
         </div>
       </div>
       <div class="mt-2">
+        <!-- add result (will show immediately, pending if offline) -->
         <button class="btn btn-primary" @click="addQuiz">Add Result</button>
       </div>
     </div>
 
+    <!--Toolbar: average, select helpers, and export buttons -->
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="badge bg-secondary">Average: {{ avgPercent }}%</span>
 
@@ -218,11 +224,13 @@ function onExportPDF() {
       </div>
 
       <div class="btn-group">
+        <!-- Export : CSV and PDF -->
         <button class="btn btn-outline-secondary" @click="onExportCSV">Export CSV</button>
         <button class="btn btn-outline-secondary" @click="onExportPDF">Export PDF</button>
       </div>
     </div>
 
+    <!-- Interactive Table — plain table for quiz results -->
     <table class="table">
       <thead>
         <tr>
@@ -235,6 +243,7 @@ function onExportPDF() {
         </tr>
       </thead>
       <tbody>
+        <!-- selection works with selectedIds for export -->
         <tr v-for="(a, idx) in visibleRows" :key="a.id || idx">
           <td>
             <input
@@ -253,6 +262,7 @@ function onExportPDF() {
           <td>{{ a.total }}</td>
           <td>
             {{ a.total ? Math.round(((Number(a.score) || 0) / Number(a.total)) * 100) : 0 }}%
+            <!-- show pending tag when not yet confirmed -->
             <span v-if="a.pending" class="text-muted small ms-1">(Pending)</span>
           </td>
           <td>{{ a.note }}</td>

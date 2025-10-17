@@ -4,13 +4,13 @@ import store from '@/services/storage'
 import { exportCSV, exportPDF } from '@/services/export'
 import { logEvent } from '@/services/analyticsService'
 import { enqueue, flush } from '@/services/offlineQueue'
-
+/* Offline feature — flush queued events when page opens */
 onMounted(() => {
   flush(async (t) => {
     if (t.name === 'resource_click') await logEvent('resource_click', { slug: t.payload?.slug })
   })
 })
-
+/*if offline, queue the click; if online, log it now */
 const openResource = async (item) => {
   const slug = item.slug || item.id || item.title || 'unknown'
   try {
@@ -25,34 +25,31 @@ const openResource = async (item) => {
   if (item.url) window.open(item.url, '_blank', 'noopener')
 }
 
-// Form Selection
+/* Selection state for export and bulk operations */
 const selectedIds = ref([])
-
-// raw data
+/* Raw resources from storage */
 const all = ref([])
-
-// sort
+/* sort by chosen column and direction */
 const sortBy = ref('title')
 const sortDir = ref('asc')
-
-// Pagination (fixed 10/page)
+/* simple pagination with fixed page size */
 const pageSize = 10
 const page = ref(1)
-
-// Filter by column（Title / Type / Topic）
+/* per column filters */
 const filters = reactive({ title: '', type: '', topic: '' })
 const norm = (s) => (s ?? '').toString().trim().toLowerCase()
-
+/* Load data for the table */
 onMounted(async () => {
   all.value = await store.getResources()
 })
 
+/* Build options for the Type filter */
 const typeOptions = computed(() => {
   const set = new Set(all.value.map((r) => r.type).filter(Boolean))
   return Array.from(set).sort()
 })
 
-// Filter + Sort
+/* filter then sort rows */
 const filteredSorted = computed(() => {
   const fTitle = norm(filters.title)
   const fType = norm(filters.type)
@@ -76,7 +73,7 @@ const filteredSorted = computed(() => {
   return rows
 })
 
-// Pagination
+/* compute totals and current page slice */
 const total = computed(() => filteredSorted.value.length)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const paged = computed(() => {
@@ -85,7 +82,7 @@ const paged = computed(() => {
   return filteredSorted.value.slice(start, start + pageSize)
 })
 
-// event
+/* change sort and pagination controls */
 function changeSort(field) {
   if (sortBy.value === field) sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
   else {
@@ -100,7 +97,7 @@ function goFirstPage() {
   page.value = 1
 }
 
-// export
+/* build headers and rows for CSV or PDF */
 const exportHeaders = ['Title', 'Type', 'Topic', 'Link']
 const exportRows = computed(() => {
   const source = selectedIds.value.length
@@ -108,6 +105,7 @@ const exportRows = computed(() => {
     : filteredSorted.value
   return source.map((r) => [r.title || '', r.type || '', r.topic || '', r.url || ''])
 })
+/* export visible or selected rows to CSV or PDF */
 function onExportCSV() {
   exportCSV('resources', exportHeaders, exportRows.value)
 }
@@ -118,7 +116,7 @@ function onExportPDF() {
 
 <template>
   <div class="container mt-4">
-    <!-- About -->
+    <!-- clear heading and description -->
     <section aria-labelledby="about-title" class="mb-4">
       <h1 id="about-title" class="mb-3">About Sub-health</h1>
       <div class="alert alert-info mb-3" role="region" aria-label="Learn about sub-health">
@@ -139,7 +137,7 @@ function onExportPDF() {
       </div>
     </section>
 
-    <!-- Toolbar -->
+    <!-- toolbar with sort, select all, clear, export -->
     <section aria-labelledby="resources-title">
       <div class="d-flex align-items-center gap-2 mb-2">
         <h3 id="resources-title" class="me-auto mb-0">Learning Resources</h3>
@@ -169,7 +167,7 @@ function onExportPDF() {
           </button>
         </div>
 
-        <!-- Selection + Export -->
+        <!-- Select helpers and Export group -->
         <div class="d-flex align-items-center gap-2 ms-auto">
           <small class="text-muted"
             >Selected: {{ selectedIds.length }} / {{ filteredSorted.length }}</small
@@ -192,7 +190,8 @@ function onExportPDF() {
         </div>
       </div>
 
-      <!-- Table -->
+      <!-- sortable, filterable, paginated table -->
+      <!-- caption explains how to use filters and sorting -->
       <div class="table-responsive">
         <table class="table table-striped align-middle" aria-describedby="help-caption">
           <caption id="help-caption" class="visually-hidden">
@@ -209,7 +208,7 @@ function onExportPDF() {
               <th scope="col">Topic</th>
               <th scope="col">Link</th>
             </tr>
-            <!-- Column Filter Rows -->
+            <!-- Per-column filter inputs -->
             <tr>
               <th></th>
               <th>
@@ -249,6 +248,7 @@ function onExportPDF() {
           </thead>
 
           <tbody>
+            <!-- Row selection for export or review -->
             <tr v-for="r in paged" :key="r.id">
               <td>
                 <input
@@ -261,6 +261,7 @@ function onExportPDF() {
               <td>{{ r.title }}</td>
               <td>{{ r.type }}</td>
               <td>{{ r.topic }}</td>
+              <!--use openResource to queue or log clicks -->
               <td><a href="#" @click.prevent="openResource(r)">Open</a></td>
             </tr>
             <tr v-if="paged.length === 0">
@@ -270,7 +271,7 @@ function onExportPDF() {
         </table>
       </div>
 
-      <!-- Pagination -->
+      <!-- agination controls with Prev and Next -->
       <nav class="d-flex justify-content-between align-items-center" aria-label="Pagination">
         <span class="text-muted">Total {{ total }} • Page {{ page }} of {{ totalPages }}</span>
         <div class="btn-group">
