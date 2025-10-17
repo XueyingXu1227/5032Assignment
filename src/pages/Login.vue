@@ -55,7 +55,6 @@ const email = ref('')
 const password = ref('')
 const emailError = ref('')
 const passwordError = ref('')
-
 const router = useRouter()
 
 const handleLogin = async () => {

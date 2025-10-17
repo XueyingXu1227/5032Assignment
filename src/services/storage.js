@@ -1,5 +1,21 @@
 import { db } from '@/firebase/init'
-import { doc, setDoc, getDoc, getDocs, collection, serverTimestamp } from 'firebase/firestore'
+import {
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  collection,
+  serverTimestamp,
+  addDoc,
+  query,
+  where,
+  orderBy,
+} from 'firebase/firestore'
+
+function requireUid(userId) {
+  if (!userId) throw new Error('Not logged in')
+  return userId
+}
 
 const PREFIX = 'fit5032_'
 
@@ -16,24 +32,20 @@ function setLS(key, val) {
 }
 
 export default {
-  // --- Recipes & Rating (C.3) ---
   async getRecipes() {
     return getLS('recipes', [])
   },
 
-  // Get current user ratings for a recipe
   async getMyRating(recipeId, userId) {
     const snap = await getDoc(doc(db, 'recipes', recipeId, 'ratings', userId))
     return snap.exists() ? snap.data().score : null
   },
 
-  // Submit ratings (repeat ratings by the same user will overwrite old values)
   async rateRecipe(recipeId, userId, stars) {
     const ref = doc(db, 'recipes', recipeId, 'ratings', userId)
     await setDoc(ref, { score: stars, updatedAt: serverTimestamp() }, { merge: true })
   },
 
-  // Calculation of average score and total number of ratings
   async getRecipeRatingSummary(recipeId) {
     const snaps = await getDocs(collection(db, 'recipes', recipeId, 'ratings'))
     let sum = 0
@@ -49,7 +61,6 @@ export default {
     return { avg, count }
   },
 
-  // --- Meal plan (E.4/D.2) ---
   async generateMealPlan(prefs) {
     return {
       id: crypto.randomUUID(),
@@ -72,19 +83,121 @@ export default {
     return getLS('mealplans', [])
   },
 
-  // --- Habitual clocking (F.1/E.4) ---
-  async saveHabitEntry(entry) {
-    const all = getLS('habits', [])
-    all.push(entry)
-    setLS('habits', all)
-  },
-  async getHabitEntries({ from, to } = {}) {
-    const all = getLS('habits', [])
-    if (!from && !to) return all
-    return all.filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
+  async saveQuizAttempt(attempt, userId) {
+    // attempt: { id?, date: 'YYYY-MM-DD', score, total, percent, note }
+    const id = attempt.id || crypto.randomUUID()
+    const payload = {
+      ...attempt,
+      id,
+      // 额外存一个时间戳，排序方便
+      createdAt: serverTimestamp(),
+    }
+
+    try {
+      const uid = requireUid(userId)
+      await setDoc(doc(db, 'users', uid, 'quizAttempts', id), payload, { merge: true })
+      // 同步一份到本地当缓存（可选）
+      const all = getLS('quizAttempts', [])
+      const idx = all.findIndex((x) => x.id === id)
+      if (idx >= 0) all[idx] = attempt
+      else all.push({ ...attempt, id })
+      setLS('quizAttempts', all)
+      return id
+    } catch (e) {
+      // 未登录/离线 → 本地
+      const all = getLS('quizAttempts', [])
+      const idx = all.findIndex((x) => x.id === id)
+      if (idx >= 0) all[idx] = { ...attempt, id }
+      else all.push({ ...attempt, id })
+      setLS('quizAttempts', all)
+      return id
+    }
   },
 
-  // --- /learn Two tables of data（D.3） ---
+  // 读取测验记录（支持按日期范围；已登录走云端，否则走本地）
+  async listQuizAttempts({ from, to } = {}, userId) {
+    try {
+      const uid = requireUid(userId)
+
+      let q = query(collection(db, 'users', uid, 'quizAttempts'), orderBy('date', 'desc'))
+      if (from) q = query(q, where('date', '>=', from))
+      if (to) q = query(q, where('date', '<=', to))
+      const snaps = await getDocs(q)
+      return snaps.docs.map((d) => d.data())
+    } catch {
+      // 本地回退
+      const all = getLS('quizAttempts', [])
+      if (!from && !to) return all
+      return all.filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
+    }
+  },
+
+  // 首次迁移：把本地 quizAttempts 批量上传到云端（已登录时调用一次）
+  async migrateLocalQuizAttempts(userId) {
+    const uid = requireUid(userId)
+    const all = getLS('quizAttempts', [])
+    for (const it of all) {
+      const id = it.id || crypto.randomUUID()
+      await setDoc(doc(db, 'users', uid, 'quizAttempts', id), { ...it, id }, { merge: true })
+    }
+    return all.length
+  },
+
+  async saveHabitEntry(entry, userId) {
+    // entry: { id?, date: 'YYYY-MM-DD', type, minutes, note }
+    const id = entry.id || crypto.randomUUID()
+    const payload = {
+      ...entry,
+      id,
+      createdAt: serverTimestamp(),
+    }
+
+    try {
+      const uid = requireUid(userId)
+      await setDoc(doc(db, 'users', uid, 'habits', id), payload, { merge: true })
+      // 同步一份到本地作为缓存（可选）
+      const all = getLS('habits', [])
+      const idx = all.findIndex((x) => x.id === id)
+      if (idx >= 0) all[idx] = entry
+      else all.push({ ...entry, id })
+      setLS('habits', all)
+      return id
+    } catch (e) {
+      // 未登录/离线 → 本地
+      const all = getLS('habits', [])
+      const idx = all.findIndex((x) => x.id === id)
+      if (idx >= 0) all[idx] = { ...entry, id }
+      else all.push({ ...entry, id })
+      setLS('habits', all)
+      return id
+    }
+  },
+
+  async getHabitEntries({ from, to } = {}, userId) {
+    try {
+      const uid = requireUid(userId)
+      let q = query(collection(db, 'users', uid, 'habits'), orderBy('date', 'desc'))
+      if (from) q = query(q, where('date', '>=', from))
+      if (to) q = query(q, where('date', '<=', to))
+      const snaps = await getDocs(q)
+      return snaps.docs.map((d) => d.data())
+    } catch {
+      const all = getLS('habits', [])
+      if (!from && !to) return all
+      return all.filter((x) => (!from || x.date >= from) && (!to || x.date <= to))
+    }
+  },
+
+  async migrateLocalHabits(userId) {
+    const uid = requireUid(userId)
+    const all = getLS('habits', [])
+    for (const it of all) {
+      const id = it.id || crypto.randomUUID()
+      await setDoc(doc(db, 'users', uid, 'habits', id), { ...it, id }, { merge: true })
+    }
+    return all.length
+  },
+
   async getResources() {
     const list = JSON.parse(localStorage.getItem('resources') || '[]')
     if (!list.length) return await this.seedResourcesIfEmpty()

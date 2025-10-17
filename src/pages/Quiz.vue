@@ -1,12 +1,21 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { exportCSV, exportPDF } from '@/services/export'
+import services from '@/services/storage'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 
-const LS_KEY = 'quizAttempts'
-
+// 今天（禁止选择未来日期）
 const todayStr = new Date().toISOString().slice(0, 10)
 
-// form
+const uid = ref(null)
+onMounted(() => {
+  const auth = getAuth()
+  onAuthStateChanged(auth, (user) => {
+    uid.value = user ? user.uid : null
+    load()
+  })
+})
+
 const form = ref({
   date: todayStr,
   score: 7,
@@ -14,44 +23,42 @@ const form = ref({
   note: '',
 })
 
-// data
+// 数据源
 const attempts = ref([])
 
-function load() {
-  attempts.value = JSON.parse(localStorage.getItem(LS_KEY) || '[]')
-}
-function save() {
-  localStorage.setItem(LS_KEY, JSON.stringify(attempts.value))
+async function load() {
+  attempts.value = await services.listQuizAttempts({}, uid.value)
 }
 
-function addAttempt() {
+async function addAttempt() {
   const s = Number(form.value.score)
   const t = Number(form.value.total)
-
-  //  不允许未来日期
   if (new Date(form.value.date) > new Date(todayStr)) {
     alert('Date cannot be in the future.')
     return
   }
-
   if (!t || s < 0 || s > t) return
-  attempts.value.push({
-    id: crypto.randomUUID(),
-    ...form.value,
+
+  const record = {
+    date: form.value.date,
     score: s,
     total: t,
     percent: Math.round((s / t) * 100),
-  })
-  save()
+    note: form.value.note || '',
+  }
+  await services.saveQuizAttempt(record, uid.value)
   form.value.note = ''
+  await load()
 }
 
 const avgPercent = computed(() => {
   if (!attempts.value.length) return 0
-  return Math.round(attempts.value.reduce((sum, a) => sum + a.percent, 0) / attempts.value.length)
+  return Math.round(
+    attempts.value.reduce((sum, a) => sum + (Number(a.percent) || 0), 0) / attempts.value.length,
+  )
 })
 
-// ---- export ----
+// 导出
 const selectedIds = ref([])
 const exportHeaders = ['Date', 'Score', 'Total', 'Percent', 'Note']
 const exportRows = computed(() => {
@@ -95,7 +102,6 @@ onMounted(load)
         <div class="row mb-3">
           <div class="col-md-3">
             <label for="dateInput" class="form-label">Date</label>
-            <!-- 限制最大可选日期为今天 -->
             <input
               id="dateInput"
               type="date"
@@ -132,9 +138,9 @@ onMounted(load)
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="badge bg-secondary">Average: {{ avgPercent }}%</span>
 
-      <small class="text-muted ms-auto">
-        Selected: {{ selectedIds.length }} / {{ attempts.length }}
-      </small>
+      <small class="text-muted ms-auto"
+        >Selected: {{ selectedIds.length }} / {{ attempts.length }}</small
+      >
 
       <div class="btn-group">
         <button
@@ -183,6 +189,7 @@ onMounted(load)
           <td>{{ a.percent }}%</td>
           <td>{{ a.note }}</td>
         </tr>
+
         <tr v-if="attempts.length === 0">
           <td colspan="6" class="text-center text-muted">No results yet.</td>
         </tr>

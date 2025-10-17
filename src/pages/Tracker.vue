@@ -1,9 +1,12 @@
 <script setup>
 import { ref, computed, reactive, onMounted, onUnmounted, watch } from 'vue'
 import { exportCSV, exportPDF } from '@/services/export'
+import services from '@/services/storage'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { logEvent } from '@/services/analyticsService'
 import { enqueue, flush } from '@/services/offlineQueue'
 
+// —— 离线任务 flush（保留你的实现）
 async function flushQueue() {
   await flush(async (task) => {
     if (task.name === 'habit_update') {
@@ -22,43 +25,44 @@ onUnmounted(() => {
   window.removeEventListener('online', onOnline)
 })
 
-//Simple data model
-const LS_KEY = 'habits'
-const form = ref({
-  date: new Date().toISOString().slice(0, 10),
-  type: 'Walk',
-  minutes: 30,
-  note: '',
+// 登录用户
+const uid = ref(null)
+onMounted(() => {
+  const auth = getAuth()
+  onAuthStateChanged(auth, (user) => {
+    uid.value = user ? user.uid : null
+    loadRange() // 登录状态变化时刷新数据源
+  })
 })
-const list = ref([])
 
-function load() {
-  list.value = JSON.parse(localStorage.getItem(LS_KEY) || '[]')
-}
-function save() {
-  localStorage.setItem(LS_KEY, JSON.stringify(list.value))
-}
-
-function fmt(d) {
-  return new Date(d).toISOString().slice(0, 10)
-}
-function addDays(d, n) {
+// today
+const fmt = (d) => new Date(d).toISOString().slice(0, 10)
+const addDays = (d, n) => {
   const x = new Date(d)
   x.setDate(x.getDate() + n)
   return x
 }
 const todayStr = fmt(new Date())
 
-//Date range
+// 表单
+const form = ref({
+  date: todayStr,
+  type: 'Walk',
+  minutes: 30,
+  note: '',
+})
+
+// 选择的日期范围
 const weekStart = ref(fmt(new Date()))
 const weekEnd = ref(fmt(new Date()))
+
 watch(weekStart, (val) => {
   if (new Date(weekEnd.value) < new Date(val)) weekEnd.value = val
 })
 watch(weekEnd, (val) => {
-  const end = new Date(val),
-    start = new Date(weekStart.value),
-    today = new Date(todayStr)
+  const end = new Date(val)
+  const start = new Date(weekStart.value)
+  const today = new Date(todayStr)
   if (end > today) {
     weekEnd.value = todayStr
     return
@@ -68,24 +72,50 @@ watch(weekEnd, (val) => {
   }
 })
 
+// 当前范围内的数据（直接从 services 按范围拉取）
+const rows = ref([])
+
+async function loadRange() {
+  rows.value = await services.getHabitEntries(
+    { from: weekStart.value, to: weekEnd.value },
+    uid.value,
+  )
+}
+
+watch([weekStart, weekEnd], loadRange)
+
+// 新增
 async function addEntry() {
-  if (!form.value.date || !form.value.type || !form.value.minutes) return
+  if (
+    !form.value.date ||
+    !form.value.type ||
+    form.value.minutes === '' ||
+    form.value.minutes == null
+  )
+    return
   if (new Date(form.value.date) > new Date(todayStr)) {
     alert('Date cannot be in the future.')
     return
   }
-  const usedDate = form.value.date
-  list.value.push({ id: crypto.randomUUID(), ...form.value, minutes: Number(form.value.minutes) })
-  save()
-  form.value.note = ''
-
-  const d = new Date(usedDate),
-    s0 = new Date(weekStart.value),
-    e0 = new Date(weekEnd.value)
-  if (d < s0) weekStart.value = fmt(d)
-  if (d > e0) weekEnd.value = fmt(d)
+  const entry = {
+    id: crypto.randomUUID(),
+    date: form.value.date,
+    type: form.value.type,
+    minutes: Number(form.value.minutes),
+    note: form.value.note || '',
+  }
 
   try {
+    await services.saveHabitEntry(entry, uid.value)
+    form.value.note = ''
+    // 自动扩展范围以包含新日期
+    const d = new Date(entry.date)
+    const s0 = new Date(weekStart.value)
+    const e0 = new Date(weekEnd.value)
+    if (d < s0) weekStart.value = fmt(d)
+    if (d > e0) weekEnd.value = fmt(d)
+    await loadRange()
+
     if (navigator.onLine) {
       await logEvent('habit_update')
     } else {
@@ -96,34 +126,22 @@ async function addEntry() {
   }
 }
 
-//Data in range
-const weekly = computed(() => {
-  const s = new Date(weekStart.value)
-  const eExclusive = addDays(new Date(weekEnd.value), 1)
-  return list.value.filter((r) => {
-    const d = new Date(r.date)
-    return d >= s && d < eExclusive
-  })
-})
-
-const totalMinutes = computed(() =>
-  weekly.value.reduce((sum, r) => sum + (Number(r.minutes) || 0), 0),
-)
+// 汇总
+const totalMinutes = computed(() => rows.value.reduce((s, r) => s + (Number(r.minutes) || 0), 0))
 const byType = computed(() => {
   const m = {}
-  weekly.value.forEach((r) => {
+  rows.value.forEach((r) => {
     m[r.type] = (m[r.type] || 0) + (Number(r.minutes) || 0)
   })
   return Object.entries(m).map(([type, minutes]) => ({ type, minutes }))
 })
 
-//interactive table
+// —— 交互式表格（排序/过滤/分页：沿用实现）
 const sortBy = ref(localStorage.getItem('trk_sortBy') || 'date')
 const sortDir = ref(localStorage.getItem('trk_sortDir') || 'desc')
 const pageSize = 10
 const page = ref(Number(localStorage.getItem('trk_page') || 1))
 
-// column filtering
 const colFilters = reactive({
   from: '',
   to: '',
@@ -132,7 +150,7 @@ const colFilters = reactive({
   maxMin: '',
   note: '',
 })
-const typeOptions = computed(() => Array.from(new Set(weekly.value.map((r) => r.type))).sort())
+const typeOptions = computed(() => Array.from(new Set(rows.value.map((r) => r.type))).sort())
 const norm = (s) => (s ?? '').toString().trim().toLowerCase()
 
 const filteredSorted = computed(() => {
@@ -143,7 +161,7 @@ const filteredSorted = computed(() => {
   const maxM = colFilters.maxMin === '' ? null : Number(colFilters.maxMin)
   const fNote = norm(colFilters.note)
 
-  let rows = weekly.value.filter((r) => {
+  let data = rows.value.filter((r) => {
     const d = new Date(r.date)
     const minutes = Number(r.minutes) || 0
     const okFrom = !from || d >= from
@@ -156,7 +174,7 @@ const filteredSorted = computed(() => {
   })
 
   const dir = sortDir.value === 'asc' ? 1 : -1
-  rows = [...rows].sort((a, b) => {
+  data = [...data].sort((a, b) => {
     let A, B
     if (sortBy.value === 'date') {
       A = new Date(a.date).getTime()
@@ -172,7 +190,7 @@ const filteredSorted = computed(() => {
     if (A > B) return 1 * dir
     return 0
   })
-  return rows
+  return data
 })
 
 const total = computed(() => filteredSorted.value.length)
@@ -204,7 +222,7 @@ watch([sortBy, sortDir, page], () => {
   localStorage.setItem('trk_page', String(page.value))
 })
 
-// export
+// 导出
 const selectedIds = ref([])
 const exportHeaders = ['Date', 'Type', 'Minutes', 'Note']
 const exportRows = computed(() => {
@@ -225,7 +243,7 @@ function onExportPDF() {
   )
 }
 
-onMounted(load)
+onMounted(loadRange)
 </script>
 
 <template>
@@ -311,6 +329,7 @@ onMounted(load)
         <button class="btn btn-outline-secondary" @click="onExportCSV">Export CSV</button>
         <button class="btn btn-outline-secondary" @click="onExportPDF">Export PDF</button>
       </div>
+
       <!-- Sort buttons -->
       <div class="btn-group" role="group" aria-label="Sort">
         <button
@@ -353,7 +372,6 @@ onMounted(load)
         </caption>
 
         <thead>
-          <!-- sorted line -->
           <tr>
             <th scope="col" style="width: 36px">Select</th>
             <th scope="col">Date</th>
@@ -365,7 +383,6 @@ onMounted(load)
           <!-- Column Filter Rows -->
           <tr>
             <th></th>
-            <!-- Date: from / to -->
             <th class="d-flex gap-1">
               <label class="visually-hidden" for="f-from">From</label>
               <input
@@ -385,7 +402,6 @@ onMounted(load)
               />
             </th>
 
-            <!-- Type -->
             <th>
               <label class="visually-hidden" for="f-type">Filter type</label>
               <select
@@ -399,7 +415,6 @@ onMounted(load)
               </select>
             </th>
 
-            <!-- Minutes: min / max -->
             <th class="d-flex gap-1">
               <label class="visually-hidden" for="f-min">Min</label>
               <input
@@ -423,7 +438,6 @@ onMounted(load)
               />
             </th>
 
-            <!-- Note -->
             <th>
               <label class="visually-hidden" for="f-note">Filter note</label>
               <input

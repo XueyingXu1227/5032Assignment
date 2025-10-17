@@ -32,8 +32,8 @@ const selectedIds = ref([])
 const all = ref([])
 
 // sort
-const sortBy = ref('title') // 'title' | 'type' | 'topic'
-const sortDir = ref('asc') // 'asc' | 'desc'
+const sortBy = ref('title')
+const sortDir = ref('asc')
 
 // Pagination (fixed 10/page)
 const pageSize = 10
@@ -137,7 +137,6 @@ function onExportPDF() {
           <li>Click <em>Open</em> to view a resource (it opens in a new tab).</li>
         </ul>
       </div>
-      <p v-for="(t, i) in aboutParas" :key="i">{{ t }}</p>
     </section>
 
     <!-- Toolbar -->
