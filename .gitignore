@@ -30,6 +30,7 @@ coverage
 .env*
 !.env.example
 functions/.env*
+.env.production.local
 
 # build & firebase functions outputs
 functions/lib/

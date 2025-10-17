@@ -28,7 +28,16 @@ const SPEEDS = {
 
 /* init Mapbox map with basic controls */
 onMounted(() => {
+  // Set Mapbox access token from env file (.env.*)
+  // Show alert if missing to prevent map load errors
+  // Load Mapbox token and prevent map errors if missing
   mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN
+  if (!mapboxgl.accessToken) {
+    console.error('[Map] Missing VITE_MAPBOX_TOKEN in production build.')
+    alert('Map service is not configured. Please contact admin.')
+    return
+  }
+
   map.value = new mapboxgl.Map({
     container: mapEl.value,
     style: 'mapbox://styles/mapbox/streets-v12',
