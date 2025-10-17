@@ -19,14 +19,13 @@ function upsertLocalHabit(uid, item) {
   const list = getLS(key, []) || []
   const idx = list.findIndex((x) => x.id === item.id)
   if (idx >= 0) list[idx] = item
-  else list.unshift(item) // 新的放前面
+  else list.unshift(item)
   setLS(key, list)
   return list
 }
 function readLocalHabits(uid) {
   return getLS(`habits_${uid}`, []) || []
 }
-// —— 本地 quiz 缓存工具 ——（每个用户一个 key：quiz_<uid>）
 function upsertLocalQuiz(uid, item) {
   const key = `quiz_${uid}`
   const list = getLS(key, []) || []
@@ -36,9 +35,11 @@ function upsertLocalQuiz(uid, item) {
   setLS(key, list)
   return list
 }
+
 function readLocalQuiz(uid) {
   return getLS(`quiz_${uid}`, []) || []
 }
+//按 id 删除本地 quiz 条目（用于把“临时”换成“正式”）
 function removeLocalQuizById(uid, id) {
   const key = `quiz_${uid}`
   const list = getLS(key, []) || []
@@ -157,8 +158,8 @@ async function getQuizResults({ from, to }, uid) {
   return local
 }
 
-// —— 新增 Quiz：先本地立即可见，再写云/入队 ——
-// 调用：addQuizResult(entry, uid)
+// —— 新增 Quiz：先本地立即可见，再写云或入队 ——
+// 返回：离线时返回 pending 的临时对象；在线成功时返回已替换过 id 的正式对象
 async function addQuizResult(entry, uid) {
   // 1) 先生成并写入“临时记录”（pending=true）
   const temp = {
@@ -184,22 +185,22 @@ async function addQuizResult(entry, uid) {
         createdAt: serverTimestamp(),
       })
       const fixed = { ...temp, id: docRef.id, pending: false }
-      removeLocalQuizById(uid, temp.id) // ← 先删旧的临时
-      upsertLocalQuiz(uid, fixed) // ← 再写正式
+      removeLocalQuizById(uid, temp.id)
+      upsertLocalQuiz(uid, fixed)
       return fixed
     } catch {
+      // 在线失败就入队，返回临时对象
       enqueue('quiz_sync', { uid, item: temp })
       return temp
     }
   }
 
-  // 3) 离线：入队，返回临时记录（pending=true）
+  // 3) 离线：入队，返回临时对象
   enqueue('quiz_sync', { uid, item: temp })
   return temp
 }
 
-// —— 队列执行器：把 pending 的 Quiz 写到云端 ——
-// 调用：syncQuizTask({ uid, item })
+// —— 队列执行器：把 pending 的 Quiz 写到云端，并用正式 id 替换本地临时 id
 async function syncQuizTask({ uid, item }) {
   const col = collection(db, 'users', uid, 'quizResults')
   const docRef = await addDoc(col, {

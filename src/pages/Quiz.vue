@@ -11,7 +11,7 @@ const todayStr = new Date().toISOString().slice(0, 10)
 // 登录用户
 const uid = ref(null)
 
-// 列表数据（用于渲染）
+// 原始列表数据（本地优先 + 云端合并的结果）
 const quizRows = ref([])
 
 // 表单
@@ -22,6 +22,34 @@ const quizForm = ref({
   note: '',
 })
 
+// 把“临时 + 正式”重复的记录过滤掉（优先保留非 pending）
+const visibleRows = computed(() => {
+  const map = new Map()
+  for (const r of quizRows.value) {
+    // 用“内容指纹”去重：同一天、同分数、同总分、同备注视为同一条
+    const key = [r.date, Number(r.score) || 0, Number(r.total) || 0, r.note || ''].join('|')
+    const existed = map.get(key)
+    if (!existed) {
+      map.set(key, r)
+    } else {
+      // 如果已有一条 pending，而新来的是非 pending，就用非 pending 覆盖
+      if (existed.pending && !r.pending) map.set(key, r)
+      // 如果两条都是 pending 或两条都非 pending，保持先来的（稳定顺序）
+    }
+  }
+  // 保持原有顺序：按 quizRows 的出现顺序输出
+  const ordered = []
+  for (const r of quizRows.value) {
+    const key = [r.date, Number(r.score) || 0, Number(r.total) || 0, r.note || ''].join('|')
+    const keep = map.get(key)
+    if (keep) {
+      ordered.push(keep)
+      map.delete(key)
+    }
+  }
+  return ordered
+})
+
 // —— 队列 flush（把离线期间添加的 quiz 同步到云端）
 async function flushQuizQueue() {
   await flush(async (task) => {
@@ -30,19 +58,22 @@ async function flushQuizQueue() {
     }
   })
 }
-function onOnline() {
-  flushQuizQueue()
-  loadQuizRange()
+
+async function onOnline() {
+  //先 flush 再加载，UI 才是最终状态
+  await flushQuizQueue()
+  await loadQuizRange()
 }
 
 // 首次加载 & 绑定 online 事件
 onMounted(() => {
   window.addEventListener('online', onOnline)
   const auth = getAuth()
-  onAuthStateChanged(auth, (user) => {
+  onAuthStateChanged(auth, async (user) => {
     uid.value = user ? user.uid : null
-    loadQuizRange()
+    await loadQuizRange()
   })
+  // 刚进入页面也尝试同步一次
   flushQuizQueue()
 })
 onUnmounted(() => {
@@ -72,26 +103,31 @@ async function addQuiz() {
   // 立刻插入到页面的数组（离线时有 pending: true）
   quizRows.value = [item, ...quizRows.value]
 
+  // 如果此刻在线，马上 reload 一次（把临时替成正式）
+  if (navigator.onLine) {
+    await loadQuizRange()
+  }
+
   // 清理备注
   quizForm.value.note = ''
 }
 
-// —— 统计与导出（都使用 quizRows）
+// —— 统计与导出（都使用 visibleRows，避免把 pending 重复导出）
 const selectedIds = ref([])
 const avgPercent = computed(() => {
-  if (!quizRows.value.length) return 0
-  const total = quizRows.value.reduce((sum, a) => {
+  if (!visibleRows.value.length) return 0
+  const total = visibleRows.value.reduce((sum, a) => {
     const p = a.total ? Math.round(((Number(a.score) || 0) / Number(a.total)) * 100) : 0
     return sum + p
   }, 0)
-  return Math.round(total / quizRows.value.length)
+  return Math.round(total / visibleRows.value.length)
 })
 
 const exportHeaders = ['Date', 'Score', 'Total', 'Percent', 'Note']
 const exportRows = computed(() => {
   const src = selectedIds.value.length
-    ? quizRows.value.filter((a) => selectedIds.value.includes(a.id))
-    : quizRows.value
+    ? visibleRows.value.filter((a) => selectedIds.value.includes(a.id))
+    : visibleRows.value
   return src.map((a) => {
     const percent = a.total ? Math.round(((Number(a.score) || 0) / Number(a.total)) * 100) : 0
     return [a.date, a.score, a.total, `${percent}%`, a.note || '']
@@ -168,13 +204,13 @@ function onExportPDF() {
       <span class="badge bg-secondary">Average: {{ avgPercent }}%</span>
 
       <small class="text-muted ms-auto">
-        Selected: {{ selectedIds.length }} / {{ quizRows.length }}
+        Selected: {{ selectedIds.length }} / {{ visibleRows.length }}
       </small>
 
       <div class="btn-group">
         <button
           class="btn btn-outline-secondary btn-sm"
-          @click="selectedIds = quizRows.map((a) => a.id)"
+          @click="selectedIds = visibleRows.map((a) => a.id)"
         >
           Select all
         </button>
@@ -199,7 +235,7 @@ function onExportPDF() {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(a, idx) in quizRows" :key="a.id || idx">
+        <tr v-for="(a, idx) in visibleRows" :key="a.id || idx">
           <td>
             <input
               type="checkbox"
@@ -222,7 +258,7 @@ function onExportPDF() {
           <td>{{ a.note }}</td>
         </tr>
 
-        <tr v-if="quizRows.length === 0">
+        <tr v-if="visibleRows.length === 0">
           <td colspan="6" class="text-center text-muted">No results yet.</td>
         </tr>
       </tbody>
