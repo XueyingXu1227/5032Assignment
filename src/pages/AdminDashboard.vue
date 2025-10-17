@@ -1,5 +1,7 @@
 <template>
+  <!-- BR (F.1)：Admin Dashboard - quick overview of users and user types -->
   <div class="container py-3">
+    <!-- Navigation for admin work - jump to charts and bulk email -->
     <div class="d-flex align-items-center justify-content-between mb-3">
       <div>
         <h1 class="mb-1">Admin Dashboard</h1>
@@ -16,6 +18,8 @@
       </div>
     </div>
 
+    <!-- BR (F.1)：KPI cards — numbers come from Firestore -->
+    <!-- BR (A.2)：Responsive layout — 3 columns on desktop, 1 on mobile -->
     <div class="row g-3 mb-3">
       <div class="col-12 col-md-4">
         <div class="card h-100 shadow-sm">
@@ -43,6 +47,8 @@
       </div>
     </div>
 
+    <!-- BR (F.1)：Interactive Charts — pie chart for role distribution -->
+    <!-- BR (E.3)：Accessibility — provide aria label and data table for screen readers -->
     <TableCard title="User Type Distribution">
       <div class="row">
         <div class="col-12 col-lg-6">
@@ -80,6 +86,7 @@
         </div>
       </div>
 
+      <!-- BR (E.3)：Accessibility — hidden table with same info for assistive tech -->
       <table class="visually-hidden">
         <caption>
           User type distribution
@@ -103,6 +110,8 @@
       </table>
     </TableCard>
 
+    <!-- BR (B.2)：Dynamic Data — show latest users from Firestore -->
+    <!-- Note：this table is a simple view here；the full D.3 table with search/sort/pagination lives elsewhere -->
     <TableCard title="Recent Users">
       <div class="table-responsive">
         <table class="table table-sm table-hover align-middle mb-0">
@@ -161,13 +170,13 @@ const recentUsers = ref([])
 // --- Pie chart ---
 const pieRef = ref(null)
 let pieChart
-
+//Admin Dashboard — helper to show percentage share
 function share(count) {
   const total = totalUsers.value || 0
   if (!total) return '0%'
   return Math.round((count / total) * 100) + '%'
 }
-
+//Admin Dashboard KPIs — fetch counts from Firestore and update the pie chart
 async function loadKpisAndPie() {
   const totalSnap = await getCountFromServer(collection(db, 'users'))
   totalUsers.value = totalSnap.data().count || 0
@@ -180,7 +189,7 @@ async function loadKpisAndPie() {
   )
   adminCount.value = adminSnap.data().count || 0
   userCount.value = userSnap.data().count || 0
-
+  // BR (F.1)：Interactive Charts — doughnut chart for role distribution
   const data = {
     labels: ['admin', 'user'],
     datasets: [
@@ -207,7 +216,7 @@ async function loadKpisAndPie() {
     })
   }
 }
-
+// BR (B.2)：Dynamic Data — get latest users ordered by createdA
 async function loadRecentUsers() {
   const qy = query(collection(db, 'users'), orderBy('createdAt', 'desc'), qlimit(8))
   const snap = await getDocs(qy)
@@ -232,13 +241,14 @@ async function loadRecentUsers() {
   })
   recentUsers.value = items
 }
-
+//load KPIs, chart and the recent users list on page open
 onMounted(async () => {
   await Promise.all([loadKpisAndPie(), loadRecentUsers()])
 })
 </script>
 
 <style scoped>
+/* utility class to hide elements visually but keep for screen readers */
 .visually-hidden {
   position: absolute !important;
   width: 1px;

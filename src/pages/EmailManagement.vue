@@ -4,11 +4,10 @@ import { sendBulkEmail } from '@/services/email'
 import { db } from '@/firebase/init'
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 
-// ---------------------------
-// Load registered users
-// ---------------------------
+/* admin can pick users from a list.
+   load users from Firestore for the dropdown. */
 const loadingUsers = ref(true)
-const users = ref([]) // [{ id, email, name }]
+const users = ref([])
 onMounted(async () => {
   const q = query(collection(db, 'users'), orderBy('email'))
   const snap = await getDocs(q)
@@ -19,17 +18,16 @@ onMounted(async () => {
   loadingUsers.value = false
 })
 
-// ---------------------------
-/* Recipient dropdown (multi-select) */
+/* multi-select UI for recipients (simple custom dropdown). */
 const picker = reactive({
   open: false,
   filter: '',
   anchorEl: null,
 })
 const selectedIds = ref(new Set()) // Set<uid>
-
+//Count of selected users, shown near chips or buttons.
 const selectedCount = computed(() => selectedIds.value.size)
-
+//Text filter for the dropdown list.
 const filteredUsers = computed(() => {
   const f = picker.filter.trim().toLowerCase()
   if (!f) return users.value
@@ -37,7 +35,7 @@ const filteredUsers = computed(() => {
     (u) => u.email.toLowerCase().includes(f) || (u.name && u.name.toLowerCase().includes(f)),
   )
 })
-
+//Open/close the dropdown and keep its anchor.
 function openDropdown() {
   picker.open = true
 }
@@ -52,27 +50,29 @@ function onInputRecipients(e) {
   picker.filter = e.target.value || ''
   openDropdown()
 }
-
+//Toggle one user in the selection.
 function toggleOne(id) {
   const s = new Set(selectedIds.value)
   s.has(id) ? s.delete(id) : s.add(id)
   selectedIds.value = s
 }
+//Quick select：add all currently visible users.
 function selectAllVisible() {
   const s = new Set(selectedIds.value)
   filteredUsers.value.forEach((u) => s.add(u.id))
   selectedIds.value = s
 }
+//Clear all selected users
 function clearAll() {
   selectedIds.value = new Set()
 }
+//Remove one chip by id
 function removeChip(id) {
   const s = new Set(selectedIds.value)
   s.delete(id)
   selectedIds.value = s
 }
-
-// click-outside to close
+//Close dropdown when clicking outside.
 function onDocClick(e) {
   const dropdown = document.getElementById('recipient-dropdown')
   const input = document.getElementById('recipient-input')
@@ -83,21 +83,21 @@ function onDocClick(e) {
 }
 onMounted(() => document.addEventListener('click', onDocClick))
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
-
+//Selected users array for chips or review
 const selectedUsers = computed(() => users.value.filter((u) => selectedIds.value.has(u.id)))
 
-// ---------------------------
-// Message & attachments (local → base64)
-// ---------------------------
+/*Email: subject, message, attachments.
+  simple checks before sending.
+  Cloud Functions - sendBulkEmail calls serverless backend. */
 const subject = ref('')
-const message = ref('') // plain text
+const message = ref('')
 const sending = ref(false)
 const lastResult = ref(null)
+//Attachments kept in memory as base64.
+const attachments = ref([])
+const MAX_TOTAL_BYTES = 10 * 1024 * 1024
 
-const attachments = ref([]) // [{ filename, type, content(base64) }]
-const MAX_TOTAL_BYTES = 10 * 1024 * 1024 // 10MB
-
-// helper: plain text -> safe HTML with <br>
+// Turn plain text into safe HTML with <br>. Good for simple rich email.
 function plainToHtml(s = '') {
   return String(s)
     .replace(/&/g, '&amp;')
@@ -105,7 +105,7 @@ function plainToHtml(s = '') {
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>')
 }
-
+//Helpers for base64 size calculation.
 function base64Bytes(b64) {
   const len = (b64 || '').length
   return Math.floor((len * 3) / 4)
@@ -113,6 +113,7 @@ function base64Bytes(b64) {
 function currentAttachmentsBytes() {
   return attachments.value.reduce((sum, a) => sum + base64Bytes(a.content), 0)
 }
+//Convert a File to base64 payload object for email API.
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -129,6 +130,9 @@ function fileToBase64(file) {
     reader.readAsDataURL(file)
   })
 }
+
+/* attachment — pick local files, convert to base64, enforce size limit.
+   stop when total > 10MB and show a message. */
 async function onPickLocalFiles(e) {
   const files = Array.from(e.target.files || [])
   let total = currentAttachmentsBytes()
@@ -144,14 +148,18 @@ async function onPickLocalFiles(e) {
   attachments.value = [...attachments.value, ...add]
   e.target.value = ''
 }
+//Remove one attachment by index.
 function removeLocalAttachment(i) {
   attachments.value.splice(i, 1)
 }
+// Clear all attachments
 function resetLocalAttachments() {
   attachments.value = []
 }
+//join names for a quick preview.
 const attachmentNames = computed(() => attachments.value.map((a) => a.filename).join(', '))
-
+/* send to many users at once.
+   content and attachments are sent via backend*/
 async function onSendBulk() {
   try {
     if (selectedIds.value.size === 0) {
@@ -188,18 +196,19 @@ async function onSendBulk() {
 
 <template>
   <div class="container py-4">
+    <!-- for admin to send emails to many users -->
     <h1 class="mb-3">Admin · Bulk Email</h1>
 
     <div class="card shadow-sm">
       <div class="card-body">
-        <!-- Recipients (chips + searchable dropdown) -->
+        <!-- Recipients area — show selected users and search list -->
         <div class="mb-3 position-relative">
           <div class="d-flex align-items-center justify-content-between mb-1">
             <label class="form-label m-0">Recipients (registered users)</label>
             <span class="badge bg-primary">{{ selectedIds.size }} selected</span>
           </div>
 
-          <!-- selected chips -->
+          <!-- Show chips for selected users -->
           <div v-if="selectedUsers.length" class="mb-2">
             <span
               v-for="u in selectedUsers"
@@ -217,7 +226,7 @@ async function onSendBulk() {
             </span>
           </div>
 
-          <!-- search input -->
+          <!-- Search box — filter users by email or name -->
           <input
             id="recipient-input"
             :value="picker.filter"
@@ -229,7 +238,7 @@ async function onSendBulk() {
             autocomplete="off"
           />
 
-          <!-- dropdown -->
+          <!-- Dropdown list — select or clear users -->
           <div v-show="picker.open" id="recipient-dropdown" class="dropdown-panel card shadow-sm">
             <div class="p-2 border-bottom d-flex gap-2">
               <button
@@ -248,7 +257,7 @@ async function onSendBulk() {
               </button>
               <span class="ms-auto text-muted small" v-if="loadingUsers">Loading…</span>
             </div>
-
+            <!-- User list in dropdown with checkboxes -->
             <div class="list-container">
               <div
                 v-for="u in filteredUsers"
@@ -275,13 +284,13 @@ async function onSendBulk() {
           </div>
         </div>
 
-        <!-- Subject -->
+        <!-- Email subject input -->
         <div class="mb-3">
           <label class="form-label">Subject</label>
           <input v-model="subject" class="form-control" placeholder="Monthly Update" />
         </div>
 
-        <!-- (plain text) -->
+        <!-- (plain text only) -->
         <div class="mb-3">
           <label class="form-label">Message content</label>
           <textarea
@@ -293,7 +302,7 @@ async function onSendBulk() {
           <div class="form-text">Plain text content will be sent in the email body.</div>
         </div>
 
-        <!-- Attachments -->
+        <!-- Attachments choose local files -->
         <div class="mb-3">
           <label class="form-label">Attachments (local • ≤10MB total)</label>
 
@@ -305,14 +314,14 @@ async function onSendBulk() {
             @change="onPickLocalFiles"
           />
 
-          <!-- custom button + text -->
+          <!-- Custom file button and file list text  -->
           <div class="d-flex align-items-center gap-2">
             <label for="fileInput" class="btn btn-outline-secondary btn-sm">Choose files</label>
             <span class="text-muted small">
               {{ attachments.length ? attachmentNames : 'No files chosen' }}
             </span>
           </div>
-
+          <!-- how selected attachments with remove buttons -->
           <div v-if="attachments.length" class="mt-2">
             <span
               v-for="(a, i) in attachments"
@@ -333,13 +342,13 @@ async function onSendBulk() {
           </div>
         </div>
 
-        <!-- Actions -->
+        <!-- send to all selected users -->
         <div class="d-flex gap-2">
           <button class="btn btn-primary" :disabled="sending" @click="onSendBulk">
             {{ sending ? 'Sending…' : 'Send bulk email' }}
           </button>
         </div>
-
+        <!-- Result area : show sent and failed counts -->
         <div v-if="lastResult" class="alert alert-light mt-3 mb-0">
           <div class="fw-bold">Last result</div>
           <div>
@@ -353,10 +362,12 @@ async function onSendBulk() {
 </template>
 
 <style scoped>
+/* make container width fit large screens but stay centered */
 .container {
   max-width: 1000px;
 }
 
+/* dropdown and hover styles for recipient picker */
 .position-relative {
   position: relative;
 }

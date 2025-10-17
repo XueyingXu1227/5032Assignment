@@ -58,8 +58,6 @@ async function fetchStorageAttachments(items = []) {
   return out
 }
 
-//exports.ping = onRequest((req, res) => res.status(200).send('pong'))
-
 exports.email = onRequest({ secrets: [SENDGRID_API_KEY, FROM_EMAIL] }, async (req, res) => {
   cors(req, res, async () => {
     try {
